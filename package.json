@@ -1,0 +1,39 @@
+{
+  "name": "mcode-cache",
+  "version": "0.0.5",
+  "description": "Our Data Caching functions. These support files, JSON, JS Objects, any primitive, etc. And provide common keying support.",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MicroCODEIncorporated/mcode-cache.git"
+  },
+  "keywords": [
+    "Lists",
+    "Lisp",
+    "Redis",
+    "Dictionary",
+    "Json",
+    "Cache",
+    "Hash",
+    "Recall",
+    "Extensible",
+    "Code",
+    "Builder",
+    "MicroCODE"
+  ],
+  "author": "Timothy McGuire",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/MicroCODEIncorporated/mcode-cache/issues"
+  },
+  "homepage": "https://github.com/MicroCODEIncorporated/mcode-cache#readme",
+  "dependencies": {
+    "mcode-data": "^0.4.3",
+    "mcode-list": "^0.4.1",
+    "mcode-log": "^0.4.6",
+    "redis": "^4.7.0"
+  }
+}
