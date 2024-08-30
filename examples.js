@@ -1,98 +1,58 @@
-// MicroCODE: define this module's name for  our 'mcode-log' package
+// MicroCODE: define this module's name for  our 'mcode-cache' package
 const MODULE_NAME = 'examples.js';
-const list = require('./index.js');
+const cache = require('./index.js');
 const mcode = require('mcode-log');
+const fs = require('fs').promises;
 
-let list1 = [1, 2, 3, 4, 5, 0];
-let list2 = ['one', 'two', 'three', 'four', 'five', 'default'];
-let list3 = [false, true, false, true, false, false];
-let list4 = [
-    {key: 1, property: 'ONE'},
-    {key: 2, property: 'TWO'},
-    {key: 3, property: 'THREE'},
-    {key: 4, property: 'FOUR'},
-    {key: 5, property: 'FIVE'},
-    {key: 0, property: 'DEFAULT'}];
 
-let list5 = [function1, function2, function3, function4, function5, functionDefault];
-
-let key = null;
-let value = null;
-
-// 1) straight swap of two values...
-
-key = 3;
-value = list.swap(key, list1, list2);  // value = 'three'
-mcode.info(`list1, list2 - key:${key}, value:${value}`, MODULE_NAME);
-
-key = 6;
-value = list.swap(key, list1, list2);  // value = 'default'
-mcode.info(`list1, list2 - key:${key}, value:${value}`, MODULE_NAME);
-
-key = 0;
-value = list.swap(key, list1, list2);  // value = 'default'
-mcode.info(`list1, list2 - key:${key}, value:${value}`, MODULE_NAME);
-
-// 2) the same lists can be used the other way around...
-
-key = 'three';
-value = list.swap(key, list2, list1);  // value = 3
-mcode.info(`list2, list1 - key:${key}, value:${value}`, MODULE_NAME);
-
-key = 'six';
-value = list.swap(key, list2, list1);  // value = 0
-mcode.info(`list2, list1 - key:${key}, value:${value}`, MODULE_NAME);
-
-key = function2;
-value = list.swap(key, list5, list2);  // value = two
-mcode.info(`list5, list2 - key:${mcode.logifyObject(key)}, value:${value}`, MODULE_NAME);
-
-// 3) any two lists on the same subject(i.e.: the same length) can be used...
-
-key = 3;
-value = list.swap(key, list1, list3);  // value = false
-mcode.info(`list1, list3 - key:${key}, value:${value}`, MODULE_NAME);
-
-key = 'three';
-value = list.swap(key, list2, list4);  // value = { key: 4, property: FOUR }
-mcode.info(`list2, list3 - key:${key}, value:${JSON.stringify(value)}`, MODULE_NAME);
-
-// 4) any list can be used to call a function in another list...
-
-key = 3;
-value = list.call(key, list1, list5);  // value = 'function3() was called.'
-mcode.info(`list1, list5 - key:${key}, value:${JSON.stringify(value)}`, MODULE_NAME);
-
-key = 99;
-value = list.call(key, list1, list5);  // value = 'functionDefault() was called.'
-mcode.info(`list1, list5 - key:${key}, value:${JSON.stringify(value)}`, MODULE_NAME);
-
-function function1()
+async function testCache()
 {
-    return 'function1() was called.';
+    // 0) dump from Redis if already there..
+    const count = await cache.fileDrop('./example.htmx');
+
+    mcode.log(`Dropped ${count} keys from Redis...`, MODULE_NAME);
+
+    // 1) straight read of a file...
+    const fileContent = await fs.readFile('./example.htmx', 'utf8');
+
+    // 2) read a file and cache it with an automatic key...
+    const fileCached2 = await cache.fileRead('./example.htmx', 'utf8');
+
+    // 3) read a file and cache it with an automatic key...
+    const fileCached3 = await cache.fileRead('./example.htmx', 'utf8');
+
+    // 4) read a file and cache it with an automatic key...
+    const fileCached4 = await cache.fileRead('./example.htmx', 'utf8');
+
+    // 5) read a file and cache it with an automatic key...
+    const fileCached5 = await cache.fileRead('./example.htmx', 'utf8');
+
+    mcode.log(`Cached file and read 4 times from Redis...`, MODULE_NAME);
+
+    mcode.log({fileContent}, MODULE_NAME);
+    mcode.log({fileCached5}, MODULE_NAME);
+
+    const filesMatch = fileContent === fileCached2 && fileCached2 === fileCached3 && fileCached3 === fileCached4 && fileCached4 === fileCached5;
+
+    mcode.log(`All file reads match: ${filesMatch}`, MODULE_NAME);
+
+    // 6) create a custome key:value in Redis...
+    const key = "myKey";
+    const value = "myValue";
+    cache.redisSet(key, value);
+
+    // 7) read the custom key:value from Redis...
+    const cacheValue = await cache.redisGet(key, () => {return "myDefaultValue";});
+
+    mcode.log(`Cached custom key:value and read from Redis... ${key}:${cacheValue}`, MODULE_NAME);
 }
 
-function function2()
-{
-    return 'function2() was called.';
-}
+// run the tests
+testCache();
 
-function function3()
+// exit the process after the tests are done...
+setTimeout(() =>
 {
-    return 'function3() was called.';
-}
+    process.exit(0);
 
-function function4()
-{
-    return 'function4() was called.';
-}
-
-function function5()
-{
-    return 'function5() was called.';
-}
-
-function functionDefault()
-{
-    return 'functionDefault() was called.';
-}
+}, 2000);

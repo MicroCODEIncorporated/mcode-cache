@@ -1,0 +1,102 @@
+
+<!-- App Toolbar Navigation -->
+<div id="app-toolbar" script="true" class="toolbar">
+  <div class="nav-tools">
+    <!--  -->
+<a class="nav-tool"
+    hx-trigger="click"
+    hx-get="/gps/ui/view?view=support&tool=help"
+    hx-target="#app-tool"
+    hx-swap="outerHTML">
+    <span class="label">Help</span>
+</a><!--  -->
+<a class="nav-tool"
+    hx-trigger="click"
+    hx-get="/gps/ui/view?view=support&tool=redis"
+    hx-target="#app-tool"
+    hx-swap="outerHTML">
+    <span class="label">Redis</span>
+</a><!--  -->
+<a class="nav-tool"
+    hx-trigger="click"
+    hx-get="/gps/ui/view?view=support&tool=tool2"
+    hx-target="#app-tool"
+    hx-swap="outerHTML">
+    <span class="label">Tool2</span>
+</a><!--  -->
+<a class="nav-tool active"
+    hx-trigger="click"
+    hx-get="/gps/ui/view?view=support&tool=tool3"
+    hx-target="#app-tool"
+    hx-swap="outerHTML">
+    <span class="label">Tool3</span>
+</a>
+  </div>
+</div><!-- App Tool area -->
+<div id='app-tool' class="tool">
+    <!-- present an example form for UI testings and prototyping -->
+<div class='card'>
+    <div class='title'>Tool#3 Action#1</div>
+    <form id='tool3-action1' class='form'
+        hx-post='gps/ui/example'
+        hx-trigger='submit'
+        hx-target='#tool3-action1-result'>
+        <label for='source'>Source:</label>
+        <input id='source' class='input' type='text' name='source' required>
+        <label for='input'>Input:</label>
+        <input id='input' class='input' type='number' name='input' required>
+        <button class='button--exe'
+            type='submit'>
+            Convert Number
+        </button>
+        <!-- Result as a read-only text field -->
+        <label for='tool3-action1-result'>Result:</label>
+        <output id='tool3-action1-result' class='output' type='text' readonly>
+    </form>
+</div><!-- present an example form for UI testings and prototyping -->
+<div class='card'>
+    <div class='title'>Tool#3 Action#2</div>
+    <form id='tool3-action2' class='form'
+        hx-post='gps/ui/example'
+        hx-trigger='submit'
+        hx-target='#tool3-action2-result'>
+        <label for='source'>Source:</label>
+        <input id='source' class='input' type='text' name='source' required>
+        <label for='input'>Input:</label>
+        <input id='input' class='input' type='number' name='input' required>
+        <button class='button--exe'
+            type='submit'>
+            Convert Number
+        </button>
+        <!-- Result as a read-only text field -->
+        <label for='tool3-action2-result'>Result:</label>
+        <output id='tool3-action2-result' class='output' type='text' readonly>
+    </form>
+</div><!-- present an example form for UI testings and prototyping -->
+<div class='card'>
+    <div class='title'>Tool#3 Action#3</div>
+    <form id='tool3-action3' class='form'
+        hx-post='gps/ui/example'
+        hx-trigger='submit'
+        hx-target='#tool3-action3-result'>
+        <label for='source'>Source:</label>
+        <input id='source' class='input' type='text' name='source' required>
+        <label for='input'>Input:</label>
+        <input id='input' class='input' type='number' name='input' required>
+        <button class='button--exe'
+            type='submit'>
+            Convert Number
+        </button>
+        <!-- Result as a read-only text field -->
+        <label for='tool3-action3-result'>Result:</label>
+        <output id='tool3-action3-result' class='output' type='text' readonly>
+    </form>
+</div><!-- the target for the default for untargeted component responses -->
+<div id="app-target-container" class="app-target">
+    <img id="spinner" class="htmx-indicator" src="dist/assets/images/spinner.gif" alt="spinner icon"/>
+    <span id="app-target"">
+        <!-- this is where the HTMX responses will be placed! -->
+    </span>
+</div>
+</div>
+<div hx-swap-oob="true"><script></script></div>

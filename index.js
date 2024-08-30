@@ -1,16 +1,15 @@
-// #region  F I L E
-// <copyright file="mcode-cache/index.js" company="MicroCODE Incorporated">Copyright © 2022-2024 MicroCODE, Inc. Troy, MI</copyright><author>Timothy J. McGuire</author>
+// #region  H E A D E R
+// <copyright file="mcode-cache/index.js" company="MicroCODE Incorporated">Copyright © 2022-2024 MicroCODE Incorporated Troy, MI</copyright><author>Timothy J. McGuire</author>
 // #region  M O D U L E
-
 // #region  D O C U M E N T A T I O N
 /*
- *      Title:    MicroCODE Shared Function Library
+ *      Title:    MicroCODE Data Caching Module
  *      Module:   modules (node_modules/mcode-cache/index.js)
- *      Project:  MicroCODE MERN Applications
- *      Customer: Internal+MIT xPRO Course
+ *      Project:  MicroCODE Common Library
+ *      Customer: Internal
  *      Creator:  MicroCODE Incorporated
- *      Date:     January 2022-2024
- *      Author:   Timothy McGuire
+ *      Date:     February 2024
+ *      Author:   Timothy J McGuire
  *
  *      MIT License: MicroCODE.mcode-cache
  *
@@ -46,7 +45,9 @@
  *
  *      1. MIT xPRO Course: Professional Certificate in Coding: Full Stack Development with MERN
  *
- *      2. LADDERS® source code: MACRO-11, MACRO-32, C#, and JavaScript.
+ *      2. MicroCODE JavaScript Style Guide
+ *         Local File: MCX-S02 (Internal JS Style Guide).docx
+ *         https://github.com/MicroCODEIncorporated/JavaScriptSG
  *
  *
  *
@@ -61,30 +62,19 @@
  *                                    CommonJS/Node.js, and browser global in our exported module.
  *
  *
- *
- * NOTE: This module follow's MicroCODE's JavaScript Style Guide and Template JS file, see:
- *
- *       o  https://github.com/MicroCODEIncorporated/JavaScriptSG
- *       o  https://github.com/MicroCODEIncorporated/TemplatesJS
- *
  */
+"use strict";
 
 // #endregion
+// #endregion
+// #endregion
 
-// #region  I M P O R T S
+// #region  I N C L U D E S
 
 const mcode = require('mcode-log');
-const data = require('mcode-data');
-const list = require('mcode-list');
-const packageJson = require('./package.json');
-
-// #endregion
-
-// #region  T Y P E S
-
-// #endregion
-
-// #region  I N T E R F A C E S
+const Redis = require('redis');
+const path = require('path');
+const fs = require('fs').promises;
 
 // #endregion
 
@@ -93,46 +83,337 @@ const packageJson = require('./package.json');
 // MicroCODE: define this module's name for our 'mcode-log' package
 const MODULE_NAME = 'mcode-cache.js';
 
-// define local copy of 'getEnvVar()' for use before 'mcode' is loaded
-// this same function is available in 'mcode-env.js' but we need it here without that package
+// #endregion
+
+// #region  C L A S S
 
 /**
- * @function getEnvVar
- * @memberof mcode
- * @desc a private helper function that returns the value of an environment variable, or a default value if not found.
- * @param {any} key the name of the environment variable to get.
- * @param {any} defaultValue the default value to return if the environment variable is not found.
- * @returns {any} the value of the environment variable, or the default value if not found.
+ * @class cache Class to provide transparent data caching for MicroCODE applications.
+ *
  */
-function getEnvVar(key, defaultValue)
+class cache
 {
-    if (typeof process !== 'undefined' && process.env && key in process.env)
-    {
-        return process.env[key];
-    }
-    return defaultValue;
-};
+    // #region  C O N S T A N T S
 
-// get our environment variables if we're on a Node.js platform
-const theme = getEnvVar('THEME', 'dark'); // default to dark mode
-const mode = getEnvVar('NODE_ENV', 'development'); // default to development mode
+    static REDIS_TTL = 60 * 60 * 24;  // 24 hours in seconds
+    static REDIS_URL = 'redis://127.0.0.1:6379';
+    static CLASS_TYPE = 'cache';
 
-/**
- * @namespace mcode
- * @desc mcode namespace containing functions and constants
- * - to collect our library into "mcode." within Web Apps via mcode-package.
- */
-const mcode = {
+    // #endregion
+
+    // #region  P R I V A T E   F I E L D S
+
+    #redis = null;
+    #redisConnected = false;
+    #redisTTL = cache.REDIS_TTL;
+    #redisURL = cache.REDIS_URL;
+    #redisNamespace = 'MicroCODE';
+    #privateExample = 'TEMPLATE';
+
+    // #endregion
+
+    // #region  C O N S T R U C T O R
 
     /**
-     * @func ready
-     * @memberof mcode
-     * @desc Logs a message to the Console when the module is loaded to show version.
+     * @constructor cache class constructor.
      */
-    ready: function ()
+    constructor ()
     {
-        log.success(`MicroCODE ${MODULE_NAME} v${packageJson.version} is loaded, mode: ${mode}, theme: ${theme}.`, MODULE_NAME);
-    },
+        // Create a Singleton instance
+        if (!cache.instance)
+        {
+            this.#redisTTL = cache.REDIS_TTL;
+            this.#redisURL = `${cache.REDIS_URL}`;
+
+            this._redisInit();
+
+            cache.instance = this;
+        }
+
+        mcode.done(`mcode-cache initialized with namespace: ${this.#redisNamespace}`, MODULE_NAME);
+
+        return cache.instance;
+    }
+
+    // #endregion
+
+    // #region  E N U M E R A T I O N S
+
+    /**
+     * @enum namedEnum1 - a description of this enum, its use, and meaning. TEMPLATE.
+     */
+    static namedEnum1 = Object.freeze
+        ({
+            name1: 0,
+            name2: 1,
+            name3: 2,
+            name4: 3,
+            name5: 4,
+            name6: 5,
+            name7: 6
+        });
+
+    // #endregion
+
+    // #region  P R O P E R T I E S
+
+    /**
+     * @property {number} redisReady the Redis connection and default namespace has been established successfully.
+     */
+    get redisReady()
+    {
+        return this.#redisConnected;
+    }
+
+    /**
+     * @property {number} redisTTL the Redis Time-To-Live property, in seconds.
+     */
+    get redisTTL()
+    {
+        return this.#redisTTL;
+    }
+    set redisTTL(value)
+    {
+        this.#redisTTL = value;
+    }
+
+    /**
+     * @property {string} redisURL the URL to the Redis Server.
+     */
+    get redisURL()
+    {
+        return this.#redisURL;
+    }
+    set redisURL(value)
+    {
+        this.#redisURL = value;
+    }
+
+    /**
+     * @property {string} redisNamespace the 'prefix' used to group our keys in the Redis Server.
+     */
+    get redisNamespace()
+    {
+        return this.#redisNamespace;
+    }
+    set redisNamespace(value)
+    {
+        mcode.debug(`Setting Redis Namespace to: ${value}`, MODULE_NAME);
+        this.#redisNamespace = value;
+    }
+
+    /**
+     * @property {string} _privateExample an example of a private property.
+     */
+    get _privateExample()
+    {
+        return this.#privateExample;
+    }
+    set _privateExample(value)
+    {
+        this.#privateExample = value;
+    }
+
+    // #endregion
+
+    // #region  S Y M B O L S
+
+    /**
+     * iterator1 - a description of this iterator, its use, and meaning.
+     */
+    [Symbol('iterator1')]()
+    {
+        // method with computed name (symbol here) TEMPLATE
+    }
+
+    // #endregion
+
+    // #region  M E T H O D S – S T A T I C
+
+    /**
+     * static1() – description of public static method, called by prototype not object.
+     *             This does not operate on a specific copy of a Class object.
+     * @api public
+     *
+     * @param {type} param1 description of param1.
+     * @returns {type} description of return value.
+     *
+     * @example
+     *
+     *      cache.static1('param1');
+     */
+    static static1(param1)
+    {
+        // ... TEMPLATE
+
+        return value;
+    }
+
+    // #endregion
+
+    // #region  M E T H O D S – P U B L I C
+
+    /**
+     * @function redisGet
+     * @memberof mcode.cache
+     * @desc Caches the results of a callback function in REDIS under the current namespace and returns the key's value.
+     * @param {string} key - the key to cache.
+     * @param {function} cb - the callback function to get fresh value.
+     * @returns {Promise} the cached value.
+     */
+    async redisGet(key, cb)
+    {
+        try
+        {
+            const redisKey = this.redisMakeKey(key);
+            let value = await this.#redis.get(redisKey);
+
+            if (value === null)
+            {
+                // if the key does not exist in Redis, use the callback to get the actual data...
+                value = await cb();
+
+                // ...and then Set the key:value in the Redis cache
+                await this.#redis.set(redisKey, value);
+            }
+
+            return value;
+        }
+        catch (exp)
+        {
+            mcode.exp(`Exception getting and caching ${key} key value in Redis.`, MODULE_NAME, exp);
+
+            return cb();  // get the actual data from the data-specific callback function
+        }
+    }
+
+    /**
+     * @function redisSet
+     * @memberof mcode.cache
+     * @desc Sets a key value in the Redis cache.
+     * @param {string} key the Redis key to be set.
+     * @param {string} value the value to be set in the Redis cache.
+     * @returns {string} the value set in the Redis cache.
+     */
+    async redisSet(key, value)
+    {
+        try
+        {
+            const redisKey = this.redisMakeKey(key);
+            return await this.#redis.set(redisKey, value);
+        }
+        catch (exp)
+        {
+            mcode.exp(`Exception setting ${rediskey} value in Redis.`, MODULE_NAME, exp);
+        }
+    }
+
+    /**
+     * @func redisMakeKey
+     * @memberof mcode.cache
+     * @desc Converts a 'key source' into a Redis Key by replacing slashes with colons and removing spaces.
+     * @param {string} keySource the path to the key to be converted.
+     * @returns {string} the Redis Key.
+     * @api public
+     * @example
+     *     const keyPath = 'components/app/tool/tool.template.htmx';
+     *     returns 'GM-GPS-eMITS-UI:components:app:tool:tool.template.htmx';
+     */
+    redisMakeKey(keySource)
+    {
+        // convert the file path into a Redis Key
+        let key = keySource.replace(/[\\/]/g, ':'); // Handle both forward and backward slashes
+
+        // remove spaces ' '
+        key = key.replace(/\s/g, ' ');
+
+        // remove double-dots '..'
+        key = key.replace(/\.\./g, '.');
+
+        // remove leading '.' and trailing '.'
+        key = key.replace(/^\.+|\.+$/g, '');
+
+        // remove leading and trailing colons
+        key = key.replace(/^:+|:+$/g, '');
+
+        // now, make it specific to the caller's namespace..
+        return `${this.redisNamespace}:${key}`;
+    }
+
+    /**
+     * @func redisDrop
+     * @memberof mcode.cache
+     * @desc Drops a key value from the Redis cache based on the 'key' name.
+     * @param {string} key the Redis key to be droppped.
+     * @returns {number} the number of keys deleted from the Redis cache.
+     * @api public
+     * @example
+     *     const count = await mcode.redisDrop(keyName);
+     */
+    async redisDrop(key)
+    {
+        return await this.#redis.del(key);
+    }
+
+    /**
+     * @func redisDropAll
+     * @memberof mcode.cache
+     * @desc Drops all keys from the Redis cache based on the App's namespace.
+     * @returns {number} the number of keys deleted from the Redis cache.
+     * @api public
+     * @example
+     *    const result = await mcode.redisDropAll();
+     */
+    async redisDropAll(keyPattern = `${this.redisNamespace}:*`)
+    {
+        // Find all keys that match the pattern
+        const keys = await this.#redis.keys(keyPattern);
+
+        // If no keys found, return 0
+        if (keys.length === 0)
+        {
+            return 0;
+        }
+
+        // Delete all keys using Promise.all
+        const results = await Promise.all(keys.map(key => this.#redis.del(key)));
+
+        // Return the number of keys deleted
+        return results.length;
+    }
+
+    /**
+     * @func redisListAll
+     * @memberof mcode.cache
+     * @desc Lists all keys from the Redis cache based on the App's namespace.
+     * @returns {Array} an array of namespace keys in the Redis cache.
+     * @api public
+     * @example
+     *    const result = await mcode.redisListAll();
+     */
+    async redisListAll(keyStar = `${this.redisNamespace}:*`)
+    {
+        // return all keys in this namespace
+        return await this.#redis.keys(keyStar);
+    }
+
+    /**
+     * @func redisClose
+     * @memberof mcode.cache
+     * @desc Closes the Redis connection.
+     * @returns {status} the Redis client connection.
+     * @api public
+     * @example
+     *   const result = await mcode.redisClose();
+     */
+    async redisClose()
+    {
+        if (this.#redis)
+        {
+            this.#redis.quit();
+            this.#redis = null;
+        }
+    }
 
     /**
      * @func fileRead
@@ -140,12 +421,23 @@ const mcode = {
      * @desc Reads a file from 'path' and caches its for future reference. The Redis 'key' generated
      * is based on the 'path' and the server's base URL (which is removed from the 'key' before caching).
      * @api public
-     * @param {string} path a standard file system reference to the file to be read..
+     * @param {string} filePath a standard file system reference to the file to be read,
+     * @param {string} fileEncoding the encoding of the file to be read (default is 'utf8').
+     *
+     * NOTE: 'filePath' is reduced to the unique sub-folder path to the file being read on the server.
+     *       Explicit paths to files outside the server's root directory are supported with
+     *       the 'complete path' parameter becoming the unique key for the file.
+     *
      * @returns {string} the contents of the file read from 'path'.
      *
      * @example
-     *      const path = './data.json';
-     *      const data = mcode.fileRead(path);
+     *      const filePath = './data.json';
+     *      const fileData = mcode.fileRead(path.join(__dirname, filePath);
+     *
+     *      filePath: "D:\MicroCODE\GM-GPS-eMITS-UI\Source\backend\components\app\tool\tool.template.htmx",
+     *      rootDir: "D:\MicroCODE\GM-GPS-eMITS-UI\Source\backend",
+     *      keyPath: "\components\app\tool\tool.template.htmx",
+     *      key: "GM-GPS-eMITS-UI:components:app:tool:tool.template.htmx"
      *
      * The 1st time 'mcode.fileRead()' is called, the file is read from disk and cached.
      * The 2nd time 'mcode.fileRead()' is called, the file is read from the cache.
@@ -153,152 +445,192 @@ const mcode = {
      * and does not need to be provided by the caller, nor stored by the caller, it is transparent.
      *
      */
-    readFile: async function (path)
+    async fileRead(filePath, fileEncoding = 'utf8')
     {
-        // convert the file path into a Redis Key
-        const key = filePath.replace(/[\\/]/g, ':'); // Handle both forward and backward slashes
-
-        mcode.debug({filePath}, MODULE_NAME);
-        mcode.debug({key}, MODULE_NAME);
-
-        return await redisCache(key, async () =>
+        return this.redisGet(filePath, async () =>
         {
-            mcode.debug(`Reading file: ${filePath}`, MODULE_NAME);
-            return await fs.readFile(filePath, 'utf8');  // direct file system read
+            mcode.debug(`Caching file: ${filePath}`, MODULE_NAME);
+            return await fs.readFile(filePath, fileEncoding);
         });
-    },
+    }
 
     /**
-     * @function redisCache
-     * @memberof routes.view
-     * @desc Caches the results of a callback function in REDIS.
-     * @param {string} key - the key to cache.
-     * @param {function} cb - the callback function to get fresh value.
-     * @returns {Promise} the cached value.
+     * @func fileWrite
+     * @memberof mcode.cache
+     * @desc Writes 'fileData' to 'filePath' and caches it in the Redis cache.
+     * @param {string} filePath a standard file system reference to the file to be read.
+     * @param {string} fileData the data to be written to the file.
+     * @param {string} fileEncoding the encoding of the file to be written (default is 'utf8').
+     * @returns {Promise} the file data written to disk.
      */
-    redisCache: function (key, cb)
+    async fileWrite(filePath, fileData, fileEncoding = 'utf8')
     {
-        mcode.debug({redis}, MODULE_NAME);
-
-        return new Promise(async (resolve, reject) =>
+        try
         {
-            mcode.debug({key}, MODULE_NAME);
+            // the cached value is no longer valid, so drop it
+            this.fileDrop(filePath);
 
-            if (!redis.connected)
+            // cache the new value
+            this.redisSet(filePath, fileData);
+
+            // write the file to disk
+            return await fs.writeFile(filePath, fileData, {encoding: fileEncoding});
+        }
+        catch (exp)
+        {
+            mcode.exp(`Exception writing to disk and caching Redis, file: ${filePath}`, MODULE_NAME, exp);
+            return null;
+        }
+    }
+
+    /**
+     * @func fileDrop
+     * @memberof mcode.cache
+     * @desc Drops a file from the Redis cache based on the 'filePath'.
+     * @param {string} filePath a standard file system reference to the file to be read.
+     * @returns {number} the number of keys deleted from the Redis cache.
+     * @api public
+     * @example
+     *     const filePath = './data.json';
+     *     const result = await mcode.fileDrop(path.join(__dirname, filePath));
+     */
+    async fileDrop(filePath)
+    {
+        const key = this.fileMakeKey(filePath);
+
+        return await this.redisDrop(key);
+    }
+
+    /**
+     * @func fileMakeKey
+     * @memberof mcode.cache
+     * @desc Generates a unique key for the file in the Redis cache based on the 'filePath'.
+     * @param {string} filePath a standard file system reference to the file to be read.
+     * @returns {string} the key for the file in the Redis cache.
+     */
+    fileMakeKey(filePath)
+    {
+        // remove 'rootKey' from the 'filePath'
+        const keyPath = filePath.replace(this.fileGetRoot(), '');
+        const key = this.redisMakeKey(keyPath);
+
+        return key;
+    }
+
+    /**
+     * @func fileGetRoot
+     * @memberof mcode.cache
+     * @desc Gets the root directory for Redis Keys based on the server's execution path.
+     * @returns {string} the root directory for the server.
+     * @api public
+     * @example
+     *    const rootDir = mcode.fileGetRoot();
+     */
+    fileGetRoot()
+    {
+        // get the execution root directory
+        const mainDir = path.dirname(require.main.filename);
+
+        // Determine the common base path
+        const rootDir = path.resolve(path.join(mainDir, '..'));
+
+        return rootDir;
+    }
+
+    // #endregion
+
+    // #region  M E T H O D S - G E N E R A T O R S
+
+    /**
+     * getValue() - returns all values in 'enums'. TEMPLATE marked private '_' for now.
+     *
+     */
+    *_getValue()
+    {
+        for (const enumValue of this.enums)
+        {
+            yield value;
+        }
+    }
+
+    // #endregion
+
+    // #region  M E T H O D S – P R I V A T E
+
+    /**
+     * @function _redisInit
+     * @api private
+     * @memberof mcode.cache
+     * @desc Initializes the internals of mcode-cache, including the instantiation of the Redis client.
+     * @returns {status} the Redis client connection.
+     */
+    _redisInit()
+    {
+        // if a client already exists, close it and start a new one
+        if (this.#redis)
+        {
+            this.#redis.quit();
+            this.#redis = null;
+        }
+
+        if (!this.#redis)
+        {
+            this.#redis = Redis.createClient({url: this.#redisURL});
+
+            this.#redis.on('connect', () =>
             {
-                mcode.error(`Redis client is not connected. Bypassing cache for key: ${key}`, MODULE_NAME);
+                mcode.done(`REDIS client connected on: ${this.#redisURL} 📣`, MODULE_NAME);
 
-                // Redis is not connected; directly return the result from the callback
-                try
-                {
-                    const res = await cb();
-                    return resolve(res);
-                }
-                catch (exp)
-                {
-                    return reject(exp);
-                }
-            }
+                this.#redisConnected = true;
+            });
 
-            try
+            this.#redis.on('error', (err) =>
             {
-                redis.get(key, async (err, data) =>
-                {
-                    if (err)
-                    {
-                        mcode.error(`Failed to get REDIS key ${key}:`, MODULE_NAME, err);
+                mcode.error(`REDIS client could not connect on: ${this.#redisURL}`, MODULE_NAME, err);
+            });
 
-                        // Redis error; directly return the result from the callback
-                        const fallbackResult = await cb();
-                        return resolve(fallbackResult);
-                    }
+            this.#redis.connect();
+        }
+    }
 
-                    if (data)
-                    {
-                        // Cache hit
-                        return resolve(JSON.parse(data));
-                    }
-
-                    // Cache miss: execute the callback to get fresh data
-                    try
-                    {
-                        const res = await cb();
-                        resolve(res);
-
-                        // Set the key:value into REDIS cache with TTL (Time To Live) expiration
-                        redis.setex(key, REDIS_TTL, JSON.stringify(res), (err) =>
-                        {
-                            if (err)
-                            {
-                                mcode.error(`Failed to set REDIS key ${key}:`, MODULE_NAME, err);
-                            }
-                        });
-                    }
-                    catch (exp)
-                    {
-                        mcode.exp(`Crashed while executing callback for key ${key}:`, MODULE_NAME, exp);
-                        return reject(exp); // Reject if callback execution fails
-                    }
-                });
-            }
-            catch (exp)
-            {
-                mcode.exp(`Crashed accessing REDIS for key ${key}:`, MODULE_NAME, exp);
-
-                // Fallback to callback if Redis access fails
-                cb().then(resolve).catch(reject);
-            }
-        });
-    },
-
-};
+    // #endregion
+}
 
 // #endregion
 
-// #region  M E T H O D - E X P O R T S
+// #region  E X P O R T S
 
-// Immediately Invoked Function Expression (IIFE) invoked on 'this' which
-// represents the global object(window in a browser, global in Node.js).
-// This IIFE returns the 'mcode' object to be assigned to the global object.
-// The Universal Module Definition (UMD) pattern supports Asynchronous Module Definition (AMD),
-// CommonJS / Node.js, and Browser 'global' usage.
-(
-    /**
-     * @function (IIFE)
-     * @description Universal Module Definition (UMD) to support AMD, CommonJS/Node.js, and browser global
-     * @param {any} root the global object (window, self, global, etc.) being updated.
-     * @param {any} factory a function that returns the exports of the module. This function is invoked in
-     * the context of the global object when the module is loaded. The return value of this function is used
-     * as the exported value of the module when it's not being used with AMD or Node.js module systems.
-     * This function is where you define what your module exports.
-     */
-    function (root, factory)
+// Export the Singleton instance
+const instance = new cache();
+
+Object.freeze(instance);
+
+// Automatically export all public methods and properties...
+
+// Export all the Public METHODs (excluding the constructor)
+Object.getOwnPropertyNames(Object.getPrototypeOf(instance)).forEach((method) =>
+{
+    if (method !== 'constructor' && typeof instance[method] === 'function' && !method.startsWith('_'))
     {
-        if (typeof define === 'function' && define.amd)
-        {
-            // AMD. Register as an anonymous module.
-            define([], factory);
-        }
-        else if (typeof module === 'object' && module.exports)
-        {
-            // Node. Does not work with strict CommonJS, but
-            // only CommonJS-like environments that support module.exports, like Node.
-            module.exports = factory();
-        }
-        else
-        {
-            // Browser globals (root is 'window')
-            root.mcode = factory();
-        }
+        // Bind the method to the instance if it is a function and does not start with '_' (Private)
+        module.exports[method] = instance[method].bind(instance);
+    }
+});
 
-    }(  // root: the global object (window, self, global, etc.)
-        (typeof self !== 'undefined') ? self : this,
-
-        // factory: a function that returns the exports of the module
-        function () {return mcode;})
-);
-
-// #endregion
+// Export all the Public PROPERTYs (get/set)
+const descriptors = Object.getOwnPropertyDescriptors(Object.getPrototypeOf(instance));
+for (const [key, descriptor] of Object.entries(descriptors))
+{
+    if (!key.startsWith('_') && (descriptor.get || descriptor.set))
+    {
+        Object.defineProperty(module.exports, key, {
+            get: descriptor.get ? descriptor.get.bind(instance) : undefined,
+            set: descriptor.set ? descriptor.set.bind(instance) : undefined,
+            enumerable: true,  // Ensure the property is enumerable
+            configurable: true,
+        });
+    }
+}
 
 // #endregion
 // #endregion
