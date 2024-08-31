@@ -62,6 +62,7 @@ To cache for repeated usage with our package, just chnage "fs.readFile()" to "mc
 <br>
 <br>
 Note what you did **not** have to do...
+
 * No creation of a unique key required in your code.
 * No explicit code to conditionally retrieve from cache vs. read the file.
 * No storage of the key in your code to benefit from the caching, just read the same file path again with "mcode.fileRead()"
