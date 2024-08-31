@@ -54,11 +54,11 @@ To cache for repeated usage with our package, just chnage "fs.readFile()" to "mc
         const iconContent = await mcode.fileRead(iconPath, 'utf8');
                                   --------------
 ```
-...this does three (3) things within one line change:
+...this does four (4) things within one line change:
 1) Automatically generates a unique Redis Key under your App's namespace representing this file.
 2) Reads and returns the file contents.
 3) Caches the file for subsequent use.
-4) Retrieves the file from cache in the future by the exact same line of code.
+4) Retrieves the file from cache in the future with the exact same line of code in your app.
 <br>
 <br>
 Note what you did **not** have to do...
