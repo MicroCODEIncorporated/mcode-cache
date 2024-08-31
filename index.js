@@ -39,6 +39,27 @@
  *
  *      This module implements the MicroCODE's Common JavaScript functions for data caching.
  *
+ *      NOTE:
+ *
+ *      o  'key' in this code refers to the Application Key or Fiel Path.
+ *      o  'redisKey' in this code refers to a fully qualified Redis Key.
+ *      o  '_redis*()' are private methods that are not exposed to the caller,
+ *                     these expected 'redisKey' values, not 'key' values.
+ *      o  'redisKeys' are made from 'key' values by the 'redisMakeKey()' method,
+ *                     which formats the 'key' into a Redis Key with a prefix
+ *                     based on the current namespace.
+ *
+ *        <key> - application 'key' format
+ *        <namespace>:<key> - 'redisKey' format
+ *
+ *      Examples:
+ *
+ *         key: '/backend/components/app/tool/tool.template.htmx'
+ *         redisKey: 'GM-GPS-eMITS-UI:backend:components:app:tool:tool.template.htmx'
+ *
+ *         key: 'myKey'
+ *         redisKey: 'MicroCODE:myKey'
+ *
  *
  *      REFERENCES:
  *      -----------
@@ -63,7 +84,6 @@
  *
  *
  */
-"use strict";
 
 // #endregion
 // #endregion
@@ -254,61 +274,6 @@ class cache
     // #region  M E T H O D S – P U B L I C
 
     /**
-     * @function redisGet
-     * @memberof mcode.cache
-     * @desc Caches the results of a callback function in REDIS under the current namespace and returns the key's value.
-     * @param {string} key - the key to cache.
-     * @param {function} cb - the callback function to get fresh value.
-     * @returns {Promise} the cached value.
-     */
-    async redisGet(key, cb)
-    {
-        try
-        {
-            const redisKey = this.redisMakeKey(key);
-            let value = await this.#redis.get(redisKey);
-
-            if (value === null)
-            {
-                // if the key does not exist in Redis, use the callback to get the actual data...
-                value = await cb();
-
-                // ...and then Set the key:value in the Redis cache
-                await this.#redis.set(redisKey, value);
-            }
-
-            return value;
-        }
-        catch (exp)
-        {
-            mcode.exp(`Exception getting and caching ${key} key value in Redis.`, MODULE_NAME, exp);
-
-            return cb();  // get the actual data from the data-specific callback function
-        }
-    }
-
-    /**
-     * @function redisSet
-     * @memberof mcode.cache
-     * @desc Sets a key value in the Redis cache.
-     * @param {string} key the Redis key to be set.
-     * @param {string} value the value to be set in the Redis cache.
-     * @returns {string} the value set in the Redis cache.
-     */
-    async redisSet(key, value)
-    {
-        try
-        {
-            const redisKey = this.redisMakeKey(key);
-            return await this.#redis.set(redisKey, value);
-        }
-        catch (exp)
-        {
-            mcode.exp(`Exception setting ${rediskey} value in Redis.`, MODULE_NAME, exp);
-        }
-    }
-
-    /**
      * @func redisMakeKey
      * @memberof mcode.cache
      * @desc Converts a 'key source' into a Redis Key by replacing slashes with colons and removing spaces.
@@ -341,10 +306,40 @@ class cache
     }
 
     /**
+     * @function redisGet
+     * @memberof mcode.cache
+     * @desc Caches the results of a callback function in REDIS under the current namespace and returns the key's value.
+     * @param {string} key the app key to get from the current namespace.
+     * @param {function} cb the callback function to get fresh value.
+     * @returns {Promise} the cached value.
+     */
+    async redisGet(key, cb)
+    {
+        // make the auto-generated Redis key for the 'key' - get from current namespace, add if not cached
+        const redisKey = this.fileMakeKey(key);
+        return await this._redisGet(redisKey, cb);
+    }
+
+    /**
+     * @function redisSet
+     * @memberof mcode.cache
+     * @desc Sets a key value in the Redis cache.
+     * @param {string} key the app key to be set into current namespace.
+     * @param {string} value the value to be set in the Redis cache.
+     * @returns {string} the value set in the Redis cache.
+     */
+    async redisSet(key, value)
+    {
+        // make the auto-generated Redis key for the 'key' - set into current namespace
+        const redisKey = this.fileMakeKey(key);
+        return await this._redisSet(redisKey, value);
+    }
+
+    /**
      * @func redisDrop
      * @memberof mcode.cache
      * @desc Drops a key value from the Redis cache based on the 'key' name.
-     * @param {string} key the Redis key to be droppped.
+     * @param {string} key the app key to be droppped.
      * @returns {number} the number of keys deleted from the Redis cache.
      * @api public
      * @example
@@ -352,7 +347,9 @@ class cache
      */
     async redisDrop(key)
     {
-        return await this.#redis.del(key);
+        // make the auto-generated Redis key for the 'key' - drop from current namespace
+        const redisKey = this.fileMakeKey(key);
+        return await this._redisDrop(redisKey);
     }
 
     /**
@@ -447,7 +444,10 @@ class cache
      */
     async fileRead(filePath, fileEncoding = 'utf8')
     {
-        return this.redisGet(filePath, async () =>
+        // make the auto-generated Redis key for the file
+        const redisKey = this.fileMakeKey(filePath);
+
+        return this._redisGet(redisKey, async () =>
         {
             mcode.debug(`Caching file: ${filePath}`, MODULE_NAME);
             return await fs.readFile(filePath, fileEncoding);
@@ -467,11 +467,14 @@ class cache
     {
         try
         {
+            // make the auto-generated Redis key for the file
+            const redisKey = this.fileMakeKey(filePath);
+
             // the cached value is no longer valid, so drop it
-            this.fileDrop(filePath);
+            this.redisDrop(redisKey);
 
             // cache the new value
-            this.redisSet(filePath, fileData);
+            this._redisSet(redisKey, fileData);
 
             // write the file to disk
             return await fs.writeFile(filePath, fileData, {encoding: fileEncoding});
@@ -496,9 +499,9 @@ class cache
      */
     async fileDrop(filePath)
     {
-        const key = this.fileMakeKey(filePath);
+        const redisKey = this.fileMakeKey(filePath);
 
-        return await this.redisDrop(key);
+        return await this._redisDrop(redisKey);
     }
 
     /**
@@ -591,6 +594,74 @@ class cache
 
             this.#redis.connect();
         }
+    }
+
+    /**
+     * @function _redisGet
+     * @memberof mcode.cache
+     * @desc Caches the results of a callback function in REDIS under the current namespace and returns the key's value.
+     * @param {string} redisKey the key to the Redis cache.
+     * @param {function} cb the callback function to get fresh value.
+     * @returns {Promise} the cached value.
+     */
+    async _redisGet(redisKey, cb)
+    {
+        try
+        {
+            let value = await this.#redis.get(redisKey);
+
+            if (value === null)
+            {
+                // if the key does not exist in Redis, use the callback to get the actual data...
+                value = await cb();
+
+                // ...and then Set the key:value in the Redis cache
+                await this.#redis.set(redisKey, value);
+            }
+
+            return value;
+        }
+        catch (exp)
+        {
+            mcode.exp(`Exception getting and caching ${redisKey} key value in Redis.`, MODULE_NAME, exp);
+
+            return cb();  // get the actual data from the data-specific callback function
+        }
+    }
+
+    /**
+     * @function _redisSet
+     * @memberof mcode.cache
+     * @desc Sets a key value in the Redis cache.
+     * @param {string} redisKey the Redis key to be set.
+     * @param {string} value the value to be set in the Redis cache.
+     * @returns {string} the value set in the Redis cache.
+     */
+    async _redisSet(redisKey, value)
+    {
+        try
+        {
+            return await this.#redis.set(redisKey, value);
+        }
+        catch (exp)
+        {
+            mcode.exp(`Exception setting ${redisKey} value in Redis.`, MODULE_NAME, exp);
+        }
+    }
+
+    /**
+     * @func _redisDrop
+     * @memberof mcode.cache
+     * @desc Drops a key value from the Redis cache based on the 'key' name.
+     * @param {string} redisKey the Redis key to be droppped.
+     * @returns {number} the number of keys deleted from the Redis cache.
+     * @api public
+     * @example
+     *     const count = await mcode.redisDrop(keyName);
+     */
+    async _redisDrop(redisKey)
+    {
+        return await this.#redis.del(redisKey);
     }
 
     // #endregion

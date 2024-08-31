@@ -204,6 +204,8 @@ Contributor's names and contact info...
 
 ## Version History
 
+* 0.5.3
+   - Corrected a namespace prefixing error.
 * 0.5.0 - 0.5.2
     - All 'mcode-*' packages updated with 'ready()' only implemented in 'mcode-log'.
 * 0.4.0
