@@ -130,6 +130,8 @@ These are the functions we want at the ready in any module for development and d
 | **redisDropAll**  | Drops all keys from a namespace in the Redis Cache, defaults to current.   | count = mcode.redisDropAll(namespace)
 | **redisListAll**  | Lists all keys from a namespace in the Redis Cache, defaults to current.   | array = mcode.redisListAll(namespace)
 | **redisMakeKey**  | Generates a well formatted Redis Key form a resource path.                 | key = mcode.redisMakeKey(path)
+| **redisCacheOn**  | Turns the caching of namespace data ON. (The default state).               | void mcode.redisCacheOn()
+| **redisCacheOff** | Turns the caching of namespace data OFF. (For active development).         | void mcode.redisCacheOff()
 | **redisClose**    | Closes the connection to the current Redis Server.                         | void mcode.redisClose(path)
 |                   |                                                                            |
 | File Specific     | These directly replace fs.readFile('filepath', 'encoding')                 |                           |
@@ -146,6 +148,7 @@ These are the functions we want at the ready in any module for development and d
 | **redisTTL**       | The current Time-To-Live, the expiration in milliseconds of current tags.  | mcode.redisTTL = 30000    |
 | **redisURL**       | The network address of the Redis Server, 'redis://<ip>:<port>.             | mcode.redisURL = 'redis://127.0.0.1:6379'
 | **redisNamespace** | The namespace for all tags until changed, defaults to 'MicroCODE'.         | mcode.redisNamespace = 'MyAppName'
+| **redisCaching**   | The current state of namespace caching, True = Caching is ON.              | if (mcode.redisCaching)
 
 ## Documentation
 
@@ -205,6 +208,8 @@ Contributor's names and contact info...
 
 ## Version History
 
+* 0.5.4
+   - Added Cache control for testing and debug: redisCaching, redisCacheOn(), redisCacheOff().
 * 0.5.3
    - Corrected a namespace prefixing error.
 * 0.5.0 - 0.5.2

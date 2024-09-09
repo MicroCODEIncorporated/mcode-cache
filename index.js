@@ -128,6 +128,7 @@ class cache
     #redisTTL = cache.REDIS_TTL;
     #redisURL = cache.REDIS_URL;
     #redisNamespace = 'MicroCODE';
+    #redisCaching = true;
     #privateExample = 'TEMPLATE';
 
     // #endregion
@@ -220,6 +221,14 @@ class cache
     {
         mcode.debug(`Setting Redis Namespace to: ${value}`, MODULE_NAME);
         this.#redisNamespace = value;
+    }
+
+    /**
+     * @property {number} redisCaching returns a value indicating whether or not Redis is caching the current namespace.
+     */
+    get redisCaching()
+    {
+        return this.#redisCaching;
     }
 
     /**
@@ -392,6 +401,30 @@ class cache
     {
         // return all keys in this namespace
         return await this.#redis.keys(keyStar);
+    }
+
+    /**
+     * @func redisCacheOn
+     * @memberof mcode.cache
+     * @desc Turns ON file caching in this instance of the current namespace.
+     * @api public
+     */
+    async redisCacheOn()
+    {
+        this.#redisCaching = true;
+    }
+
+    /**
+     * @func redisCacheOff
+     * @memberof mcode.cache
+     * @desc Turns OFF file caching in this instance of the current namespace.
+     * @api public
+     */
+    async redisCacheOff()
+    {
+        this.#redisCaching = false;
+
+        this.redisDropAll();  // dump the current namespace cached data
     }
 
     /**
@@ -608,6 +641,12 @@ class cache
     {
         try
         {
+            // if the Redis cache is not enabled, just get the data from the callback
+            if (!this.#redisCaching)
+            {
+                return cb();
+            }
+
             let value = await this.#redis.get(redisKey);
 
             if (value === null)
@@ -641,6 +680,12 @@ class cache
     {
         try
         {
+            // if the Redis cache is not enabled, just return the value
+            if (!this.#redisCaching)
+            {
+                return value;
+            }
+
             return await this.#redis.set(redisKey, value);
         }
         catch (exp)
