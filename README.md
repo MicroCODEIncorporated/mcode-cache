@@ -208,6 +208,8 @@ Contributor's names and contact info...
 
 ## Version History
 
+* 0.5.5
+   - Remove debug logging.
 * 0.5.4
    - Added Cache control for testing and debug: redisCaching, redisCacheOn(), redisCacheOff().
 * 0.5.3

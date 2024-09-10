@@ -482,7 +482,6 @@ class cache
 
         return this._redisGet(redisKey, async () =>
         {
-            mcode.debug(`Caching file: ${filePath}`, MODULE_NAME);
             return await fs.readFile(filePath, fileEncoding);
         });
     }
