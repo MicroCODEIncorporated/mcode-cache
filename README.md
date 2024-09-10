@@ -141,7 +141,10 @@ These are the functions we want at the ready in any module for development and d
 | **fileMakeKey**   | Generates a well formatted Redis Key from a standard file path.            | key = mcode.fileMakeKey(path)
 | **fileGetRoot**   | Gets the root directory for Redis Keys based on app's execution path.      | path = mcode.fileGetRoot(path)
 
-<p>&nbsp;</p>
+
+## Included Properties
+
+These are the properties for interacting with the mcode-cache instance.
 
 | Property	         | Description                                                                | Usage                     |
 |--------------------|----------------------------------------------------------------------------|---------------------------|
