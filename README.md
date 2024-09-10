@@ -141,6 +141,7 @@ These are the functions we want at the ready in any module for development and d
 | **fileMakeKey**   | Generates a well formatted Redis Key from a standard file path.            | key = mcode.fileMakeKey(path)
 | **fileGetRoot**   | Gets the root directory for Redis Keys based on app's execution path.      | path = mcode.fileGetRoot(path)
 
+<p>&nbsp;</p>
 
 | Property	         | Description                                                                | Usage                     |
 |--------------------|----------------------------------------------------------------------------|---------------------------|
@@ -149,6 +150,8 @@ These are the functions we want at the ready in any module for development and d
 | **redisURL**       | The network address of the Redis Server, 'redis://<ip>:<port>.             | mcode.redisURL = 'redis://127.0.0.1:6379'
 | **redisNamespace** | The namespace for all tags until changed, defaults to 'MicroCODE'.         | mcode.redisNamespace = 'MyAppName'
 | **redisCaching**   | The current state of namespace caching, True = Caching is ON.              | if (mcode.redisCaching)
+
+<p>&nbsp;</p>
 
 ## Documentation
 
