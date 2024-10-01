@@ -7,10 +7,10 @@ const fs = require('fs').promises;
 
 async function testCache()
 {
-    // 0) dump from Redis if already there..
+    // 0) dump from Cache if already there..
     const count = await cache.fileDrop('./example.htmx');
 
-    mcode.log(`Dropped ${count} keys from Redis...`, MODULE_NAME);
+    mcode.log(`Dropped ${count} keys from Cache...`, MODULE_NAME);
 
     // 1) straight read of a file...
     const fileContent = await fs.readFile('./example.htmx', 'utf8');
@@ -27,7 +27,7 @@ async function testCache()
     // 5) read a file and cache it with an automatic key...
     const fileCached5 = await cache.fileRead('./example.htmx', 'utf8');
 
-    mcode.log(`Cached file and read 4 times from Redis...`, MODULE_NAME);
+    mcode.log(`Cached file and read 4 times from Cache...`, MODULE_NAME);
 
     mcode.log({fileContent}, MODULE_NAME);
     mcode.log({fileCached5}, MODULE_NAME);
@@ -36,15 +36,15 @@ async function testCache()
 
     mcode.log(`All file reads match: ${filesMatch}`, MODULE_NAME);
 
-    // 6) create a custome key:value in Redis...
+    // 6) create a custome key:value in Cache...
     const key = "myKey";
     const value = "myValue";
-    cache.redisSet(key, value);
+    cache.cacheSet(key, value);
 
-    // 7) read the custom key:value from Redis...
-    const cacheValue = await cache.redisGet(key, () => {return "myDefaultValue";});
+    // 7) read the custom key:value from Cache...
+    const cacheValue = await cache.cacheGet(key, () => {return "myDefaultValue";});
 
-    mcode.log(`Cached custom key:value and read from Redis... ${key}:${cacheValue}`, MODULE_NAME);
+    mcode.log(`Cached custom key:value and read from Cache... ${key}:${cacheValue}`, MODULE_NAME);
 }
 
 // run the tests

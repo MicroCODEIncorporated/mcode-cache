@@ -1,7 +1,7 @@
 # MicroCODE's 'mcode-cache' package
 A public NPM Package of our internal data caching tools for Frontend and Backend JavaScript NodeJS projects.
 
-This is an extremely 'light weight' package with dependencies on our internal 'data' and 'log' packages and on Redis for the actual cache.
+This is an extremely 'light weight' package with dependencies on our internal 'data' and 'log' packages and on node-cache and Redis for an optional caches.
 
 
 ## Description
@@ -28,12 +28,13 @@ This is our own internal data caching code for common operations like caching fi
 
 * **Production**
 1) mcode-log - our standard logging package (_just for displaying errors or test results_)
-1) Redis - Remote Dictionary Server, the standard community addition.
+2) node-cache - an in memory local/app private cache from Node.js.
+3) Redis - Remote Dictionary Server, the standard community addition.
 
 * **Development**
-1) Node.JS - standard runtime environment
+1) Node.js - standard runtime environment
 2) JSDocs - our preferred JavaScript documentation system
-3) Jest.JS - our preferred JavaScript testing framework
+3) Jest.js - our preferred JavaScript testing framework
 
 
 ## Usage
@@ -55,7 +56,7 @@ To cache for repeated usage with our package, just chnage "fs.readFile()" to "mc
                                   --------------
 ```
 ...this does four (4) things within one line change:
-1) Automatically generates a unique Redis Key under your App's namespace representing this file.
+1) Automatically generates a unique Cache Key under your App's namespace representing this file.
 2) Reads and returns the file contents.
 3) Caches the file for subsequent use.
 4) Retrieves the file from cache in the future with the exact same line of code in your app.
@@ -124,22 +125,25 @@ These are the functions we want at the ready in any module for development and d
 |-------------------|----------------------------------------------------------------------------|---------------------------|
 |                   |                                                                            |
 | General           |                                                                            |                           |
-| **redisGet**      | Gets the value of a Key from the Redis Cache, from App's namespace.        | value = mcode.redisGet(path)
-| **redisSet**      | Sets the value of a Key from the Redis Cache, in App's namespace.          | value = mcode.redisGet(path)
-| **redisDrop**     | Drops a key from the Redis Cache.                                          | count = mcode.redisDrop(key)
-| **redisDropAll**  | Drops all keys from a namespace in the Redis Cache, defaults to current.   | count = mcode.redisDropAll(namespace)
-| **redisListAll**  | Lists all keys from a namespace in the Redis Cache, defaults to current.   | array = mcode.redisListAll(namespace)
-| **redisMakeKey**  | Generates a well formatted Redis Key form a resource path.                 | key = mcode.redisMakeKey(path)
-| **redisCacheOn**  | Turns the caching of namespace data ON. (The default state).               | void mcode.redisCacheOn()
-| **redisCacheOff** | Turns the caching of namespace data OFF. (For active development).         | void mcode.redisCacheOff()
-| **redisClose**    | Closes the connection to the current Redis Server.                         | void mcode.redisClose(path)
+| **addNamespace**  | Creates a new Namespace--in Node or Redis--for caching or accessing data.  | mcode.addNamespace(({name: 'MicroCODE', type: 'node'})
+| **cacheGet**      | Gets the value of a Key from the Cache, from App's namespace.              | value = mcode.cacheGet(key)
+| **cacheSet**      | Sets the value of a Key from the Cache, in App's namespace.                | value = mcode.cacheGet(key)
+| **cacheDrop**     | Drops a key from the Cache.                                                | count = mcode.cacheDrop(key)
+| **cacheDropAll**  | Drops all keys from a namespace in the Cache, defaults to current.         | count = mcode.cacheDropAll({cache: 'redis', namespace: 'GM-GPS-eMITS-DB', pattern: '*'})
+| **cacheListAll**  | Lists all keys from a namespace in the Cache, defaults to current.         | array = mcode.cacheListAll({cache: 'node', namespace: '*', pattern: '*'})
+| **cacheMakeKey**  | Generates a well formatted Cache Key form a resource key.                  | key = mcode.cacheMakeKey(key)
+| **cacheOn**       | Turns the caching of Node data ON. (The default state).                    | void mcode.cacheOn()
+| **cacheOff**      | Turns the caching of Node data OFF. (For active development).              | void mcode.cacheOff()
+| **redisOn**       | Turns the caching of Redis data ON. (The default state).                   | void mcode.redisOn()
+| **redisOff**      | Turns the caching of Redis data OFF. (For active development).             | void mcode.redisOff()
+| **cacheClose**    | Closes the Node and Redis caches, and the connection to the Redis Server.  | void mcode.cacheClose(path)
 |                   |                                                                            |
 | File Specific     | These directly replace fs.readFile('filepath', 'encoding')                 |                           |
 | **fileRead**      | Reads a file from storage with a standard 'path' and caches it.            | contents = mcode.fileRead(path, encoding)
 | **fileWrite**     | Writes a file to storage with a standard 'path' and caches it.             | state = mcode.writeRead(path, contents, encoding)
 | **fileDrop**      | Invalidates a standard 'path', forcing a fresh read/cache on next access.  | count = mcode.fileDrop(path)
-| **fileMakeKey**   | Generates a well formatted Redis Key from a standard file path.            | key = mcode.fileMakeKey(path)
-| **fileGetRoot**   | Gets the root directory for Redis Keys based on app's execution path.      | path = mcode.fileGetRoot(path)
+| **fileMakeKey**   | Generates a well formatted Cache Key from a standard file path.            | key = mcode.fileMakeKey(path)
+| **fileGetRoot**   | Gets the root directory for Cache Keys based on app's execution path.      | path = mcode.fileGetRoot(path)
 
 
 ## Included Properties
@@ -148,11 +152,14 @@ These are the properties for interacting with the mcode-cache instance.
 
 | Property	         | Description                                                                | Usage                     |
 |--------------------|----------------------------------------------------------------------------|---------------------------|
-| **redisReady**     | The Cache is ready for use, Redis online, Namespace is established.        | if (mcode.redisReady)     |
-| **redisTTL**       | The current Time-To-Live, the expiration in milliseconds of current tags.  | mcode.redisTTL = 30000    |
+| **cacheNamespaces**| The active namespaces and there types (Node or Redis).                     | const namespaces = await mcode.cacheNamespaces;
+| **cacheReady**     | The Cache is ready for use, Redis online, Namespace is established.        | if (mcode.cacheReady)     |
+| **cacheTTL**       | The current Time-To-Live, the expiration in milliseconds of current tags.  | mcode.cacheTTL = 30000    |
 | **redisURL**       | The network address of the Redis Server, 'redis://<ip>:<port>.             | mcode.redisURL = 'redis://127.0.0.1:6379'
-| **redisNamespace** | The namespace for all tags until changed, defaults to 'MicroCODE'.         | mcode.redisNamespace = 'MyAppName'
-| **redisCaching**   | The current state of namespace caching, True = Caching is ON.              | if (mcode.redisCaching)
+| **cacheNamespace** | The namespace for all tags until changed, defaults to 'MicroCODE'.         | mcode.cacheNamespace = 'MyAppName'
+| **cacheEnabled**   | The current state of Node namespace caching, True = Caching is ON.         | if (mcode.cacheEnabled)
+| **redisEnabled**   | The current state of Redis namespace caching, True = Caching is ON.        | if (mcode.redisEnabled)
+
 
 <p>&nbsp;</p>
 
@@ -201,7 +208,8 @@ Contact Timothy McGuire, support@mcode.com.
 |  **Express**      | Express is *not* a database but rather an ‘extensible routing language’ for communication between a Client and a Server.
 |  **React**        | A Web UI development system, a JavaScript library developed by Facebook and made public—and Open Source—since 2013.
 |  **Redis**        | A Remote Dictionary Server, a standard through the web development industry.
-|  **Node JS**      | A development stack that executes from a local file store—on a local Server—instead of from a network of servers.
+|  **node-cache**   | The Node.js Cache for 'in app' caching on the App's own server.
+|  **Node.js**      | A development stack that executes from a local file store—on a local Server—instead of from a network of servers.
 |  **JSDocs**       | A toolset to automatically generate API-style documentation from source code tagging.
 
 
@@ -214,6 +222,11 @@ Contributor's names and contact info...
 
 ## Version History
 
+* 0.6.0
+   - Added support for multiple caches: node-cache (new default), and kept Redis as an option.
+   - One of the original purposes of this package was easy/fast data caching within an App,
+     having to go to a network connected Redis defeats that purpose and so we added node-cache as the default.
+   - This is BREAKING change, several functions now require parameters for distinguishing which cache is being referenced.
 * 0.5.5
    - Remove debug logging.
 * 0.5.4

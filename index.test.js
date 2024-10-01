@@ -20,14 +20,14 @@ describe('mcode-cache: file read and cache operations', () =>
         const maxRetries = 30;
         let retries = 0;
 
-        while (!cache.redisReady && retries < maxRetries)
+        while (!cache.cacheReady && retries < maxRetries)
         {
             mcode.log('Waiting for cache to be ready...', MODULE_NAME);
             await new Promise(resolve => setTimeout(resolve, 1000));
             retries++;
         }
 
-        if (!cache.redisReady)
+        if (!cache.cacheReady)
         {
             throw new Error('Cache not ready after waiting for 30 seconds.');
         }
@@ -43,9 +43,9 @@ describe('mcode-cache: file read and cache operations', () =>
         consoleSpy.mockRestore();
 
         // Close connections
-        if (cache.redisReady)
+        if (cache.cacheReady)
         {
-            await cache.redisClose();
+            await cache.cacheClose();
         }
     });
 
@@ -55,7 +55,7 @@ describe('mcode-cache: file read and cache operations', () =>
         const count = await cache.fileDrop(testFile);
         if (count > 0)
         {
-            mcode.info(`Dropped file, '${testFile}', ${count} key(s) from Redis...`, MODULE_NAME);
+            mcode.info(`Dropped file, '${testFile}', ${count} key(s) from Cache...`, MODULE_NAME);
         }
 
         // Capture the time it takes to read the file the 1st time
@@ -103,10 +103,10 @@ describe('mcode-cache: file read and cache operations', () =>
     {
         const key = "myKey";
         const value = "myValue";
-        cache.redisSet(key, value);
+        cache.cacheSet(key, value);
 
-        const cacheValue = await cache.redisGet(key, () => {return "myDefaultValue";});
-        mcode.info(`Cached custom key:value and read from Redis... ${key}:${cacheValue}`, MODULE_NAME);
+        const cacheValue = await cache.cacheGet(key, () => {return "myDefaultValue";});
+        mcode.info(`Cached custom key:value and read from Cache... ${key}:${cacheValue}`, MODULE_NAME);
 
         expect(cacheValue).toBe(value);
     });

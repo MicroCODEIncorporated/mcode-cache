@@ -1,6 +1,6 @@
 {
   "name": "mcode-cache",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "description": "Our Data Caching functions. These support files, JSON, JS Objects, any primitive, etc. And provide common keying support.",
   "main": "index.js",
   "scripts": {
@@ -31,7 +31,9 @@
   },
   "homepage": "https://github.com/MicroCODEIncorporated/mcode-cache#readme",
   "dependencies": {
-    "mcode-log": "^0.5.1",
+    "mcode-data": "^0.5.1",
+    "mcode-log": "^0.5.3",
+    "node-cache": "^5.1.2",
     "redis": "^4.7.0"
   },
   "devDependencies": {

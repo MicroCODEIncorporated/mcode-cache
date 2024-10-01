@@ -41,24 +41,27 @@
  *
  *      NOTE:
  *
- *      o  'key' in this code refers to the Application Key or Fiel Path.
- *      o  'redisKey' in this code refers to a fully qualified Redis Key.
- *      o  '_redis*()' are private methods that are not exposed to the caller,
- *                     these expected 'redisKey' values, not 'key' values.
- *      o  'redisKeys' are made from 'key' values by the 'redisMakeKey()' method,
- *                     which formats the 'key' into a Redis Key with a prefix
- *                     based on the current namespace.
+ *      o  'key' in this code refers to the Application Key or File Path.
+ *
+ *      o  'cacheKey' in this code refers to a fully qualified cache Key.
+ *
+ *      o  'cacheKeys' are made from 'key' values by the 'cacheMakeKey()' method,
+ *                     which formats the 'key' into a cache Key with a prefix
+ *                     based on the current Namespace.
+ *
+ *      o  '_cache*()' are private methods that are not exposed to the caller,
+ *                     these expect 'cacheKey' values, not 'key' values.
  *
  *        <key> - application 'key' format
- *        <namespace>:<key> - 'redisKey' format
+ *        <namespace>:<key> - 'cacheKey' format
  *
  *      Examples:
  *
- *         key: '/backend/components/app/tool/tool.template.htmx'
- *         redisKey: 'GM-GPS-eMITS-UI:backend:components:app:tool:tool.template.htmx'
+ *         key:      '/backend/components/app/tool/tool.template.htmx'
+ *         cacheKey: 'GM-GPS-eMITS-UI:backend:components:app:tool:tool.template.htmx'
  *
- *         key: 'myKey'
- *         redisKey: 'MicroCODE:myKey'
+ *         key:      'myKey'
+ *         cacheKey: 'MicroCODE:myKey'
  *
  *
  *      REFERENCES:
@@ -81,6 +84,9 @@
  *  30-Jan-2024   TJM-MCODE  {0001}   New module for common reusable JavaScript data caching functions.
  *  01-Feb-2024   TJM-MCODE  {0002}   Changed to the Universal Module Definition (UMD) pattern to support AMD,
  *                                    CommonJS/Node.js, and browser global in our exported module.
+ *  15-Sep-2024   TJM-MCODE  {0003}   Extended to support *node-cache* package for caching local information
+ *                                    to avoid network latency, this is now the default cache provider.
+ *
  *
  *
  */
@@ -92,9 +98,11 @@
 // #region  I N C L U D E S
 
 const mcode = require('mcode-log');
-const Redis = require('redis');
 const path = require('path');
 const fs = require('fs').promises;
+
+const Redis = require('redis');
+const NodeCache = require('node-cache');
 
 // #endregion
 
@@ -115,21 +123,30 @@ class cache
 {
     // #region  C O N S T A N T S
 
-    static REDIS_TTL = 60 * 60 * 24;  // 24 hours in seconds
-    static REDIS_URL = 'redis://127.0.0.1:6379';
+    static CACHE_TTL = 60 * 60 * 24;  // 24 hours in seconds
     static CLASS_TYPE = 'cache';
+    static REDIS_URL = 'redis://127.0.0.1:6379';
+    static REDIS_PORT = 6379;
 
     // #endregion
 
     // #region  P R I V A T E   F I E L D S
 
+    // node-cache instance
+    #cache = null;
+    #cacheTTL = cache.CACHE_TTL;
+    #cacheNamespace = '';
+    #cacheNamespaces = {};
+    #cacheEnabled = true;
+
+    // Redis instance
     #redis = null;
-    #redisConnected = false;
-    #redisTTL = cache.REDIS_TTL;
     #redisURL = cache.REDIS_URL;
-    #redisNamespace = 'MicroCODE';
-    #redisCaching = true;
-    #privateExample = 'TEMPLATE';
+    #redisPort = cache.REDIS_PORT;
+    #redisConnected = false;
+    #redisEnabled = true;
+
+    #privateExample = 'PRIVATE PROPERTY';
 
     // #endregion
 
@@ -143,15 +160,24 @@ class cache
         // Create a Singleton instance
         if (!cache.instance)
         {
-            this.#redisTTL = cache.REDIS_TTL;
+            this.#cacheTTL = cache.CACHE_TTL;
             this.#redisURL = `${cache.REDIS_URL}`;
 
-            this._redisInit();
+            this._cacheInit();
+
+            // add the default namespace as a node-cache namespace
+            this.addNamespace({name: 'MicroCODE', type: 'node'});
+
+            // make it current
+            this.#cacheNamespace = 'MicroCODE';
+
+            // generate a default cache key for the current namespace
+            this.cacheSet('Default', 'node-cache');
 
             cache.instance = this;
         }
 
-        mcode.done(`mcode-cache initialized with namespace: ${this.#redisNamespace}`, MODULE_NAME);
+        mcode.done(`mcode-cache initialized with namespace: ${this.#cacheNamespace}`, MODULE_NAME);
 
         return cache.instance;
     }
@@ -179,23 +205,71 @@ class cache
     // #region  P R O P E R T I E S
 
     /**
-     * @property {number} redisReady the Redis connection and default namespace has been established successfully.
+     * @property {number} cacheReady the cache instance and default namespace has=ve been established successfully.
      */
-    get redisReady()
+    get cacheReady()
     {
-        return this.#redisConnected;
+        if (this.#redis)
+        {
+            return (this.#cache != null && this.#redisConnected);
+        }
+        else
+        {
+            return this.#cache != null;
+        }
     }
 
     /**
-     * @property {number} redisTTL the Redis Time-To-Live property, in seconds.
+     * @property {number} cacheTTL the cache Time-To-Live property, in seconds.
      */
-    get redisTTL()
+    get cacheTTL()
     {
-        return this.#redisTTL;
+        return this.#cacheTTL;
     }
-    set redisTTL(value)
+    set cacheTTL(value)
     {
-        this.#redisTTL = value;
+        this.#cacheTTL = value;
+    }
+
+    /**
+     * @property {string} cacheNamespaces the 'prefix' used to group our keys in the cache Server.
+     * This property switches to a new namespace, to be used for all subsequent cache operations as the default.
+     * The namespace must already exist in the cache servers 'namespace' list, see addNamespace().
+     */
+    get cacheNamespaces()
+    {
+        return this.#cacheNamespaces;
+    }
+
+    /**
+     * @property {string} cacheNamespace the 'prefix' used to group our keys in the cache Server.
+     * This property switches to a new namespace, to be used for all subsequent cache operations as the default.
+     * The namespace must already exist in the cache servers 'namespace' list, see addNamespace().
+     */
+    get cacheNamespace()
+    {
+        return this.#cacheNamespace;
+    }
+    set cacheNamespace(value)
+    {
+        this.#cacheNamespace = value;
+        mcode.success(`Switched to namespace: '${this.#cacheNamespace}`, MODULE_NAME);
+    }
+
+    /**
+     * @property {number} cacheEnabled returns a value indicating whether or not the Node Caches are caching the namespaces.
+     */
+    get cacheEnabled()
+    {
+        return this.#cacheEnabled;
+    }
+
+    /**
+     * @property {number} redisEnabled returns a value indicating whether or not Redis Caches is caching the namespaces.
+     */
+    get redisEnabled()
+    {
+        return this.#redisEnabled;
     }
 
     /**
@@ -208,27 +282,6 @@ class cache
     set redisURL(value)
     {
         this.#redisURL = value;
-    }
-
-    /**
-     * @property {string} redisNamespace the 'prefix' used to group our keys in the Redis Server.
-     */
-    get redisNamespace()
-    {
-        return this.#redisNamespace;
-    }
-    set redisNamespace(value)
-    {
-        mcode.debug(`Setting Redis Namespace to: ${value}`, MODULE_NAME);
-        this.#redisNamespace = value;
-    }
-
-    /**
-     * @property {number} redisCaching returns a value indicating whether or not Redis is caching the current namespace.
-     */
-    get redisCaching()
-    {
-        return this.#redisCaching;
     }
 
     /**
@@ -283,19 +336,71 @@ class cache
     // #region  M E T H O D S – P U B L I C
 
     /**
-     * @func redisMakeKey
+     * @func addNamespace
      * @memberof mcode.cache
-     * @desc Converts a 'key source' into a Redis Key by replacing slashes with colons and removing spaces.
+     * @desc Adds a new namespace to the cache server.
+     * @param {object} namespace the namespace and configuration to be added to the cache server.
+     * @api public
+     * @example
+     *     const namespace = {name: 'MicroCODE', type: 'node'};
+     */
+    addNamespace(namespace)
+    {
+        // get the namespace name and type
+        if (!namespace || !namespace.name || !namespace.type)
+        {
+            mcode.warn(`Invalid namespace: it must have a 'name' and 'type' defined.`, MODULE_NAME);
+            return;
+        }
+
+        // only allow 'node' or 'redis' cache types
+        if (namespace.type !== 'node' && namespace.type !== 'redis')
+        {
+            mcode.warn(`Invalid cache type: ${namespace.type}, selected for namespace: ${namespace.name}, must be 'node' or 'redis'.`, MODULE_NAME);
+            return;
+        }
+
+        // When we add the 1st Redis namespace, initialize the Redis client
+        if (namespace.type === 'redis' && !this.#redis)
+        {
+            // if no Redis url is provided, use the default
+            if (namespace.type === 'redis' && !namespace.url)
+            {
+                namespace.url = this.#redisURL;
+            }
+
+            // if no port is provided, use the default
+            if (namespace.type === 'redis' && !namespace.port)
+            {
+                namespace.port = 6379;
+            }
+
+            this.#redisURL = `${namespace.url}`;
+            this.#redisPort = `${namespace.port}`;
+
+            this._redisInit();
+        }
+
+        // add the namespace to the cache server
+        this.#cacheNamespaces[namespace.name] = namespace.type;
+
+        mcode.success(`Added namespace: '${namespace.name}`, MODULE_NAME);
+    }
+
+    /**
+     * @func cacheMakeKey
+     * @memberof mcode.cache
+     * @desc Converts a 'key source' into a cache Key by replacing slashes with colons and removing spaces.
      * @param {string} keySource the path to the key to be converted.
-     * @returns {string} the Redis Key.
+     * @returns {string} the cache Key.
      * @api public
      * @example
      *     const keyPath = 'components/app/tool/tool.template.htmx';
      *     returns 'GM-GPS-eMITS-UI:components:app:tool:tool.template.htmx';
      */
-    redisMakeKey(keySource)
+    cacheMakeKey(keySource)
     {
-        // convert the file path into a Redis Key
+        // convert the file path into a cache Key
         let key = keySource.replace(/[\\/]/g, ':'); // Handle both forward and backward slashes
 
         // remove spaces ' '
@@ -311,133 +416,233 @@ class cache
         key = key.replace(/^:+|:+$/g, '');
 
         // now, make it specific to the caller's namespace..
-        return `${this.redisNamespace}:${key}`;
+        return `${this.cacheNamespace}:${key}`;
     }
 
     /**
-     * @function redisGet
+     * @function cacheGet
      * @memberof mcode.cache
-     * @desc Caches the results of a callback function in REDIS under the current namespace and returns the key's value.
+     * @desc Caches the results of a callback function in cache under the current namespace and returns the key's value.
      * @param {string} key the app key to get from the current namespace.
      * @param {function} cb the callback function to get fresh value.
      * @returns {Promise} the cached value.
      */
-    async redisGet(key, cb)
+    async cacheGet(key, cb)
     {
-        // make the auto-generated Redis key for the 'key' - get from current namespace, add if not cached
-        const redisKey = this.fileMakeKey(key);
-        return await this._redisGet(redisKey, cb);
-    }
+        // make the auto-generated cache key for the 'key' - get from current namespace, add if not cached
+        const cacheKey = this.fileMakeKey(key);
 
-    /**
-     * @function redisSet
-     * @memberof mcode.cache
-     * @desc Sets a key value in the Redis cache.
-     * @param {string} key the app key to be set into current namespace.
-     * @param {string} value the value to be set in the Redis cache.
-     * @returns {string} the value set in the Redis cache.
-     */
-    async redisSet(key, value)
-    {
-        // make the auto-generated Redis key for the 'key' - set into current namespace
-        const redisKey = this.fileMakeKey(key);
-        return await this._redisSet(redisKey, value);
-    }
-
-    /**
-     * @func redisDrop
-     * @memberof mcode.cache
-     * @desc Drops a key value from the Redis cache based on the 'key' name.
-     * @param {string} key the app key to be droppped.
-     * @returns {number} the number of keys deleted from the Redis cache.
-     * @api public
-     * @example
-     *     const count = await mcode.redisDrop(keyName);
-     */
-    async redisDrop(key)
-    {
-        // make the auto-generated Redis key for the 'key' - drop from current namespace
-        const redisKey = this.fileMakeKey(key);
-        return await this._redisDrop(redisKey);
-    }
-
-    /**
-     * @func redisDropAll
-     * @memberof mcode.cache
-     * @desc Drops all keys from the Redis cache based on the App's namespace.
-     * @returns {number} the number of keys deleted from the Redis cache.
-     * @api public
-     * @example
-     *    const result = await mcode.redisDropAll();
-     */
-    async redisDropAll(keyPattern = `${this.redisNamespace}:*`)
-    {
-        // Find all keys that match the pattern
-        const keys = await this.#redis.keys(keyPattern);
-
-        // If no keys found, return 0
-        if (keys.length === 0)
+        // get the value from the cache associated with the current namespace
+        if (this.#cacheNamespaces[this.#cacheNamespace] === 'redis')
         {
-            return 0;
+            // use the Redis client
+            return await this.#redis.get(cacheKey);
         }
 
-        // Delete all keys using Promise.all
-        const results = await Promise.all(keys.map(key => this.#redis.del(key)));
-
-        // Return the number of keys deleted
-        return results.length;
+        return await this._cacheGet(cacheKey, cb);
     }
 
     /**
-     * @func redisListAll
+     * @function cacheSet
      * @memberof mcode.cache
-     * @desc Lists all keys from the Redis cache based on the App's namespace.
-     * @returns {Array} an array of namespace keys in the Redis cache.
+     * @desc Sets a key value in the cache.
+     * @param {string} key the app key to be set into current namespace.
+     * @param {string} value the value to be set in the cache.
+     * @returns {string} the value set in the cache.
+     */
+    async cacheSet(key, value)
+    {
+        // make the auto-generated cache key for the 'key' - set into current namespace
+        const cacheKey = this.fileMakeKey(key);
+
+        // set the value in the cache associated with the current namespace
+        if (this.#cacheNamespaces[this.#cacheNamespace] === 'redis')
+        {
+            // use the Redis client
+            return await this.#redis.set(cacheKey, value);
+        }
+
+        return await this._cacheSet(cacheKey, value);
+    }
+
+    /**
+     * @func cacheDrop
+     * @memberof mcode.cache
+     * @desc Drops a key value from the cache based on the 'key' name.
+     * @param {string} key the app key to be droppped.
+     * @returns {number} the number of keys deleted from the cache.
      * @api public
      * @example
-     *    const result = await mcode.redisListAll();
+     *     const count = await mcode.cacheDrop(keyName);
      */
-    async redisListAll(keyStar = `${this.redisNamespace}:*`)
+    async cacheDrop(key)
     {
-        // return all keys in this namespace
-        return await this.#redis.keys(keyStar);
+        // make the auto-generated cache key for the 'key' - drop from current namespace
+        const cacheKey = this.fileMakeKey(key);
+
+        // delete the value from the cache associated with the current namespace
+        if (this.#cacheNamespaces[this.#cacheNamespace] === 'redis')
+        {
+            // use the Redis client
+            return await this._redisDrop(cacheKey);
+        }
+
+        return await this._cacheDrop(cacheKey);
     }
 
     /**
-     * @func redisCacheOn
+     * @func cacheDropAll
      * @memberof mcode.cache
-     * @desc Turns ON file caching in this instance of the current namespace.
-     * @api public
-     */
-    async redisCacheOn()
-    {
-        this.#redisCaching = true;
-    }
-
-    /**
-     * @func redisCacheOff
-     * @memberof mcode.cache
-     * @desc Turns OFF file caching in this instance of the current namespace.
-     * @api public
-     */
-    async redisCacheOff()
-    {
-        this.#redisCaching = false;
-
-        this.redisDropAll();  // dump the current namespace cached data
-    }
-
-    /**
-     * @func redisClose
-     * @memberof mcode.cache
-     * @desc Closes the Redis connection.
-     * @returns {status} the Redis client connection.
+     * @desc Drops all keys from the cache based on the App's namespace.
+     * @param {string} cache the cache to drop all keys from.
+     * @param {string} namespace the namespace to drop all keys from.
+     * @param {string} pattern the key pattern to drop all keys from.
+     * @returns {number} the number of keys deleted from the cache.
      * @api public
      * @example
-     *   const result = await mcode.redisClose();
+     *    const result = await mcode.cacheDropAll();
+     *    const result = await mcode.cacheDropAll({cache: 'redis', namespace: 'GM-GPS-eMITS-DB', pattern: '*'});
      */
-    async redisClose()
+    async cacheDropAll({cache = '*', namespace = '*', pattern = '*'})
     {
+        let result = 0;
+
+        for (const thisNamespace in this.#cacheNamespaces)
+        {
+            if (thisNamespace === namespace || namespace === '*')
+            {
+                const cacheType = this.#cacheNamespaces[thisNamespace];
+
+                if (cacheType === 'node' && (cache === 'node' || cache === '*'))
+                {
+                    // Get keys from the Node cache
+                    const nodeKeys = await this._cacheKeys(`${thisNamespace}:${pattern}`);
+                    result += nodeKeys.length;
+
+                    // Delete all keys from the Node cache
+                    await Promise.all(nodeKeys.map(key => this.#cache.del(key)));
+                }
+
+                if (cacheType === 'redis' && (cache === 'redis' || cache === '*'))
+                {
+                    // Get keys from the Redis client
+                    const redisKeys = await this.#redis.keys(`${thisNamespace}:${pattern}`);
+                    result += redisKeys.length;
+
+                    // Delete all keys from the Redis cache
+                    await Promise.all(redisKeys.map(key => this.#redis.del(key)));
+                }
+            }
+        }
+
+        // Return the total number of keys deleted
+        return result;
+    }
+
+    /**
+     * @func cacheListAll
+     * @memberof mcode.cache
+     * @desc Lists all keys from the cache based on the App's namespace.
+     * @param {string} cache the cache to list all keys from.
+     * @param {string} namespace the namespace to list all keys from.
+     * @param {string} pattern the key pattern to list all keys from.
+     * @returns {Array} an array of namespace keys in the cache.
+     * @api public
+     * @example
+     *    const result = await mcode.cacheListAll();
+     *    const result = await mcode.cacheListAll({cache: 'node', namespace: '*', keyStar: '*'});
+     */
+    async cacheListAll({cache = '*', namespace = '*', pattern = '*'})
+    {
+        let keys = [];
+
+        for (const thisNamespace in this.#cacheNamespaces)
+        {
+            if (thisNamespace === namespace || namespace === '*')
+            {
+                const cacheType = this.#cacheNamespaces[thisNamespace];
+
+                if (cacheType === cache || cache === '*')
+                {
+                    if (cacheType === 'node')
+                    {
+                        // use the Node cache - NOTE: node-cache.keys() does not support wildcards
+                        keys = keys.concat(await this._cacheKeys(`${thisNamespace}:${pattern}`));
+                    }
+                    if (cacheType === 'redis')
+                    {
+                        // use the Redis client
+                        keys = keys.concat(await this.#redis.keys(`${thisNamespace}:${pattern}`));
+                    }
+                }
+            }
+        }
+
+        return keys;
+    }
+
+    /**
+     * @func cacheOn
+     * @memberof mcode.cache
+     * @desc Turns ON caching in the Node caches.
+     * @api public
+     */
+    async cacheOn()
+    {
+        this.#cacheEnabled = true;
+    }
+
+    /**
+     * @func cacheOff
+     * @memberof mcode.cache
+     * @desc Turns OFF caching in the Node caches.
+     * @api public
+     */
+    async cacheOff()
+    {
+        this.#cacheEnabled = false;
+        this.cacheDropAll({cache: 'node', namespace: '*', pattern: '*'});
+    }
+
+    /**
+     * @func redisOn
+     * @memberof mcode.redis
+     * @desc Turns ON caching in the Redis caches.
+     * @api public
+     */
+    async redisOn()
+    {
+        this.#redisEnabled = true;
+    }
+
+    /**
+     * @func redisOff
+     * @memberof mcode.redis
+     * @desc Turns OFF caching in the Redis caches.
+     * @api public
+     */
+    async redisOff()
+    {
+        this.#redisEnabled = false;
+        this.cacheDropAll({cache: 'redis', namespace: '*', pattern: '*'});
+    }
+
+    /**
+     * @func cacheClose
+     * @memberof mcode.cache
+     * @desc Closes the cache connection.
+     * @returns {status} the cache client connection.
+     * @api public
+     * @example
+     *   const result = await mcode.cacheClose();
+     */
+    async cacheClose()
+    {
+        if (this.#cache)
+        {
+            this.#cache = null;
+        }
+
         if (this.#redis)
         {
             this.#redis.quit();
@@ -448,7 +653,7 @@ class cache
     /**
      * @func fileRead
      * @memberof mcode
-     * @desc Reads a file from 'path' and caches its for future reference. The Redis 'key' generated
+     * @desc Reads a file from 'path' and caches its for future reference. The cache 'key' generated
      * is based on the 'path' and the server's base URL (which is removed from the 'key' before caching).
      * @api public
      * @param {string} filePath a standard file system reference to the file to be read,
@@ -477,10 +682,10 @@ class cache
      */
     async fileRead(filePath, fileEncoding = 'utf8')
     {
-        // make the auto-generated Redis key for the file
-        const redisKey = this.fileMakeKey(filePath);
+        // make the auto-generated cache key for the file
+        const cacheKey = this.fileMakeKey(filePath);
 
-        return this._redisGet(redisKey, async () =>
+        return this._cacheGet(cacheKey, async () =>
         {
             return await fs.readFile(filePath, fileEncoding);
         });
@@ -489,7 +694,7 @@ class cache
     /**
      * @func fileWrite
      * @memberof mcode.cache
-     * @desc Writes 'fileData' to 'filePath' and caches it in the Redis cache.
+     * @desc Writes 'fileData' to 'filePath' and caches it in the cache.
      * @param {string} filePath a standard file system reference to the file to be read.
      * @param {string} fileData the data to be written to the file.
      * @param {string} fileEncoding the encoding of the file to be written (default is 'utf8').
@@ -499,21 +704,21 @@ class cache
     {
         try
         {
-            // make the auto-generated Redis key for the file
-            const redisKey = this.fileMakeKey(filePath);
+            // make the auto-generated cache key for the file
+            const cacheKey = this.fileMakeKey(filePath);
 
             // the cached value is no longer valid, so drop it
-            this.redisDrop(redisKey);
+            this.cacheDrop(cacheKey);
 
             // cache the new value
-            this._redisSet(redisKey, fileData);
+            this._cacheSet(cacheKey, fileData);
 
             // write the file to disk
             return await fs.writeFile(filePath, fileData, {encoding: fileEncoding});
         }
         catch (exp)
         {
-            mcode.exp(`Exception writing to disk and caching Redis, file: ${filePath}`, MODULE_NAME, exp);
+            mcode.exp(`Exception writing to disk and caching cache, file: ${filePath}`, MODULE_NAME, exp);
             return null;
         }
     }
@@ -521,9 +726,9 @@ class cache
     /**
      * @func fileDrop
      * @memberof mcode.cache
-     * @desc Drops a file from the Redis cache based on the 'filePath'.
+     * @desc Drops a file from the cache based on the 'filePath'.
      * @param {string} filePath a standard file system reference to the file to be read.
-     * @returns {number} the number of keys deleted from the Redis cache.
+     * @returns {number} the number of keys deleted from the cache.
      * @api public
      * @example
      *     const filePath = './data.json';
@@ -531,23 +736,23 @@ class cache
      */
     async fileDrop(filePath)
     {
-        const redisKey = this.fileMakeKey(filePath);
+        const cacheKey = this.fileMakeKey(filePath);
 
-        return await this._redisDrop(redisKey);
+        return await this._cacheDrop(cacheKey);
     }
 
     /**
      * @func fileMakeKey
      * @memberof mcode.cache
-     * @desc Generates a unique key for the file in the Redis cache based on the 'filePath'.
+     * @desc Generates a unique key for the file in the cache based on the 'filePath'.
      * @param {string} filePath a standard file system reference to the file to be read.
-     * @returns {string} the key for the file in the Redis cache.
+     * @returns {string} the key for the file in the cache.
      */
     fileMakeKey(filePath)
     {
         // remove 'rootKey' from the 'filePath'
         const keyPath = filePath.replace(this.fileGetRoot(), '');
-        const key = this.redisMakeKey(keyPath);
+        const key = this.cacheMakeKey(keyPath);
 
         return key;
     }
@@ -555,7 +760,7 @@ class cache
     /**
      * @func fileGetRoot
      * @memberof mcode.cache
-     * @desc Gets the root directory for Redis Keys based on the server's execution path.
+     * @desc Gets the root directory for cache Keys based on the server's execution path.
      * @returns {string} the root directory for the server.
      * @api public
      * @example
@@ -593,6 +798,28 @@ class cache
     // #region  M E T H O D S – P R I V A T E
 
     /**
+     * @function _cacheInit
+     * @api private
+     * @memberof mcode.cache
+     * @desc Initializes the internals of mcode-cache, including the instantiation of the cache client.
+     * @returns {status} the cache client connection.
+     */
+    _cacheInit()
+    {
+        // if a client already exists, close it and start a new one
+        if (this.#cache)
+        {
+            this.#cache = null;
+        }
+
+        if (!this.#cache)
+        {
+            this.#cache = new NodeCache({stdTTL: cache.CACHE_TTL});
+            mcode.done(`mcode-cache initialized with TTL: ${cache.CACHE_TTL} 📣`, MODULE_NAME);
+        }
+    }
+
+    /**
      * @function _redisInit
      * @api private
      * @memberof mcode.cache
@@ -610,7 +837,7 @@ class cache
 
         if (!this.#redis)
         {
-            this.#redis = Redis.createClient({url: this.#redisURL});
+            this.#redis = Redis.createClient({url: this.#redisURL, port: this.#redisPort});
 
             this.#redis.on('connect', () =>
             {
@@ -629,83 +856,191 @@ class cache
     }
 
     /**
-     * @function _redisGet
+     * @function _cacheGet
      * @memberof mcode.cache
-     * @desc Caches the results of a callback function in REDIS under the current namespace and returns the key's value.
-     * @param {string} redisKey the key to the Redis cache.
+     * @desc Caches the results of a callback function in cache under the current namespace and returns the key's value.
+     * @param {string} cacheKey the key to the cache.
      * @param {function} cb the callback function to get fresh value.
      * @returns {Promise} the cached value.
      */
-    async _redisGet(redisKey, cb)
+    async _cacheGet(cacheKey, cb)
     {
         try
         {
-            // if the Redis cache is not enabled, just get the data from the callback
-            if (!this.#redisCaching)
+            // if the cache is not enabled, just get the data from the callback
+            if (!this.#cacheEnabled)
             {
                 return cb();
             }
 
-            let value = await this.#redis.get(redisKey);
+            let value = this.#cache.get(cacheKey);
 
-            if (value === null)
+            if (!value)
             {
-                // if the key does not exist in Redis, use the callback to get the actual data...
+                // if the key does not exist in cache, use the callback to get the actual data...
                 value = await cb();
 
-                // ...and then Set the key:value in the Redis cache
-                await this.#redis.set(redisKey, value);
+                // ...and then Set the key:value in the cache
+                await this.#cache.set(cacheKey, value);
             }
 
             return value;
         }
         catch (exp)
         {
-            mcode.exp(`Exception getting and caching ${redisKey} key value in Redis.`, MODULE_NAME, exp);
+            mcode.exp(`Exception getting and caching ${cacheKey} key value in NODE cache.`, MODULE_NAME, exp);
 
             return cb();  // get the actual data from the data-specific callback function
         }
     }
 
     /**
-     * @function _redisSet
+     * @function _redisGet
      * @memberof mcode.cache
-     * @desc Sets a key value in the Redis cache.
-     * @param {string} redisKey the Redis key to be set.
-     * @param {string} value the value to be set in the Redis cache.
-     * @returns {string} the value set in the Redis cache.
+     * @desc Caches the results of a callback function in cache under the current namespace and returns the key's value.
+     * @param {string} cacheKey the key to the cache.
+     * @param {function} cb the callback function to get fresh value.
+     * @returns {Promise} the cached value.
      */
-    async _redisSet(redisKey, value)
+    async _redisGet(cacheKey, cb)
     {
         try
         {
-            // if the Redis cache is not enabled, just return the value
-            if (!this.#redisCaching)
+            // if the cache is not enabled, just get the data from the callback
+            if (!this.#cacheEnabled)
             {
-                return value;
+                return cb();
             }
 
-            return await this.#redis.set(redisKey, value);
+            let value = this.#redis.get(cacheKey);
+
+            if (!value)
+            {
+                // if the key does not exist in cache, use the callback to get the actual data...
+                value = await cb();
+
+                // ...and then Set the key:value in the cache
+                await this.#redis.set(cacheKey, value);
+            }
+
+            return value;
         }
         catch (exp)
         {
-            mcode.exp(`Exception setting ${redisKey} value in Redis.`, MODULE_NAME, exp);
+            mcode.exp(`Exception getting and caching ${cacheKey} key value in REDIS cache.`, MODULE_NAME, exp);
+
+            return cb();  // get the actual data from the data-specific callback function
         }
+    }
+
+    /**
+     * @function _cacheSet
+     * @memberof mcode.cache
+     * @desc Sets a key value in the cache.
+     * @param {string} cacheKey the cache key to be set.
+     * @param {string} value the value to be set in the cache.
+     */
+    async _cacheSet(cacheKey, value)
+    {
+        try
+        {
+            // if the cache is not enabled, just return
+            if (!this.#cacheEnabled)
+            {
+                return;
+            }
+
+            await this.#cache.set(cacheKey, value);
+        }
+        catch (exp)
+        {
+            mcode.exp(`Exception setting ${cacheKey} value in NODE cache.`, MODULE_NAME, exp);
+        }
+    }
+
+    /**
+     * @function _redisSet
+     * @memberof mcode.cache
+     * @desc Sets a key value in the cache.
+     * @param {string} cacheKey the cache key to be set.
+     * @param {string} value the value to be set in the cache.
+     */
+    async _redisSet(cacheKey, value)
+    {
+        try
+        {
+            // if the cache is not enabled, just return
+            if (!this.#cacheEnabled)
+            {
+                return;
+            }
+
+            await this.#redis.set(cacheKey, value);
+        }
+        catch (exp)
+        {
+            mcode.exp(`Exception setting ${cacheKey} value in REDIS cache.`, MODULE_NAME, exp);
+        }
+    }
+
+    /**
+     * @func _cacheDrop
+     * @memberof mcode.cache
+     * @desc Drops a key value from the cache based on the 'key' name.
+     * @param {string} cacheKey the cache key to be droppped.
+     * @returns {number} the number of keys deleted from the cache.
+     * @api public
+     * @example
+     *     const count = await mcode.cacheDrop(keyName);
+     */
+    async _cacheDrop(cacheKey)
+    {
+        return await this.#cache.del(cacheKey);
     }
 
     /**
      * @func _redisDrop
      * @memberof mcode.cache
-     * @desc Drops a key value from the Redis cache based on the 'key' name.
-     * @param {string} redisKey the Redis key to be droppped.
-     * @returns {number} the number of keys deleted from the Redis cache.
+     * @desc Drops a key value from the cache based on the 'key' name.
+     * @param {string} cacheKey the cache key to be droppped.
+     * @returns {number} the number of keys deleted from the cache.
      * @api public
      * @example
-     *     const count = await mcode.redisDrop(keyName);
+     *     const count = await mcode.cacheDrop(keyName);
      */
-    async _redisDrop(redisKey)
+    async _redisDrop(cacheKey)
     {
-        return await this.#redis.del(redisKey);
+        return await this.#redis.del(cacheKey);
+    }
+
+    /**
+     * @func _cacheKeys
+     * @memberof mcode.cache
+     * @desc returns a filtered list of keys in the cache,
+     * NOTE: keys() in node-cache does not support wildcards.
+     * @param {string} pattern the key pattern to list all keys from.
+     * @returns {number} the number of keys deleted from the cache.
+     * @api public
+     * @example
+     *     const count = await mcode.cacheDrop(keyName);
+     */
+    async _cacheKeys(pattern)
+    {
+        const allKeys = this.#cache.keys(); // Get all keys from node-cache
+        const regexPattern = this._convertGlobToRegExp(pattern); // Convert glob pattern to RegExp
+        return allKeys.filter(key => regexPattern.test(key)); // Filter keys based on the Regex
+    }
+
+    // Convert Redis glob pattern to RegExp
+    _convertGlobToRegExp(globPattern)
+    {
+        const escapedPattern = globPattern
+            .replace(/\*/g, '.*')  // Replace * with .* (matches any characters)
+            .replace(/\?/g, '.')   // Replace ? with . (matches any single character)
+            .replace(/\[/g, '\\[') // Escape [
+            .replace(/\]/g, '\\]'); // Escape ]
+
+        return new RegExp(`^${escapedPattern}$`); // Create a RegExp from the glob pattern
     }
 
     // #endregion
