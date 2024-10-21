@@ -126,8 +126,8 @@ These are the functions we want at the ready in any module for development and d
 |                   |                                                                            |
 | General           |                                                                            |                           |
 | **addNamespace**  | Creates a new Namespace--in Node or Redis--for caching or accessing data.  | mcode.addNamespace(({name: 'MicroCODE', type: 'node'})
-| **cacheGet**      | Gets the value of a Key from the Cache, from App's namespace.              | value = mcode.cacheGet(key)
-| **cacheSet**      | Sets the value of a Key from the Cache, in App's namespace.                | value = mcode.cacheGet(key)
+| **cacheGet**      | Gets the value of a Key from the Cache, from App's namespace.              | value = mcode.cacheGet(key, defaultCallback)
+| **cacheSet**      | Sets the value of a Key from the Cache, in App's namespace.                | mcode.cacheSet(key, value)
 | **cacheDrop**     | Drops a key from the Cache.                                                | count = mcode.cacheDrop(key)
 | **cacheDropAll**  | Drops all keys from a namespace in the Cache, defaults to current.         | count = mcode.cacheDropAll({cache: 'redis', namespace: 'GM-GPS-eMITS-DB', pattern: '*'})
 | **cacheListAll**  | Lists all keys from a namespace in the Cache, defaults to current.         | array = mcode.cacheListAll({cache: 'node', namespace: '*', pattern: '*'})
@@ -222,6 +222,8 @@ Contributor's names and contact info...
 
 ## Version History
 
+* 0.6.1
+    - Corrected 'cacheGet()' and documented the optional callback for a default methd.
 * 0.6.0
    - Added support for multiple caches: node-cache (new default), and kept Redis as an option.
    - One of the original purposes of this package was easy/fast data caching within an App,

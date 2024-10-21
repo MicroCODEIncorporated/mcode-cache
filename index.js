@@ -427,7 +427,7 @@ class cache
      * @param {function} cb the callback function to get fresh value.
      * @returns {Promise} the cached value.
      */
-    async cacheGet(key, cb)
+    async cacheGet(key, cb = () => {return "<not defined>";})
     {
         // make the auto-generated cache key for the 'key' - get from current namespace, add if not cached
         const cacheKey = this.fileMakeKey(key);
@@ -888,7 +888,7 @@ class cache
         }
         catch (exp)
         {
-            mcode.exp(`Exception getting and caching ${cacheKey} key value in NODE cache.`, MODULE_NAME, exp);
+            mcode.exp(`Exception getting cached '${cacheKey}' key value in NODE cache.`, MODULE_NAME, exp);
 
             return cb();  // get the actual data from the data-specific callback function
         }
@@ -927,7 +927,7 @@ class cache
         }
         catch (exp)
         {
-            mcode.exp(`Exception getting and caching ${cacheKey} key value in REDIS cache.`, MODULE_NAME, exp);
+            mcode.exp(`Exception getting cached '${cacheKey}' key value in REDIS cache.`, MODULE_NAME, exp);
 
             return cb();  // get the actual data from the data-specific callback function
         }
