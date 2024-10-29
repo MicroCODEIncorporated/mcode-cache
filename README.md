@@ -222,37 +222,39 @@ Contributor's names and contact info...
 
 ## Version History
 
-* 0.6.1
+* v0.6.2
+    - Updated mcode-data to v0.5.5 and mcode-log to v0.5.5
+* v0.6.1
     - Corrected 'cacheGet()' and documented the optional callback for a default methd.
-* 0.6.0
+* v0.6.0
    - Added support for multiple caches: node-cache (new default), and kept Redis as an option.
    - One of the original purposes of this package was easy/fast data caching within an App,
      having to go to a network connected Redis defeats that purpose and so we added node-cache as the default.
    - This is BREAKING change, several functions now require parameters for distinguishing which cache is being referenced.
-* 0.5.5
+* v0.5.5
    - Remove debug logging.
-* 0.5.4
+* v0.5.4
    - Added Cache control for testing and debug: redisCaching, redisCacheOn(), redisCacheOff().
-* 0.5.3
+* v0.5.3
    - Corrected a namespace prefixing error.
-* 0.5.0 - 0.5.2
+* v0.5.0 - 0.5.2
     - All 'mcode-*' packages updated with 'ready()' only implemented in 'mcode-log'.
-* 0.4.0
+* v0.4.0
     - made public and synchronized into mcode-package along with mcode-data, mcode-log, mcode-list.
-* 0.0.5
+* v0.0.5
     - made public to test integration - NOT READY FOR USE.
-* 0.0.4
+* v0.0.4
     - Updated README, uninstalled JSDocs and Jest for publishing.
-* 0.0.3
+* v0.0.3
     - Corrected JSDocs and Jest to DEV ONLY dependencies.
-* 0.0.2
+* v0.0.2
     - Added JSDocs, Jest and updated README.
-* 0.0.1
+* v0.0.1
     - Initial movement of our internal code into an NPM package for ease of use in other projects.
 
 ## Future Development
 
-* 0.1.*
+* v0.1.*
     - Any additional core code we will develop for general list processing work.
     - Complex function execution with passed arguments or passed functions.
 
