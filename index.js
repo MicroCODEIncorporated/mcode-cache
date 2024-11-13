@@ -127,6 +127,8 @@ class cache
     static CLASS_TYPE = 'cache';
     static REDIS_URL = 'redis://127.0.0.1:6379';
     static REDIS_PORT = 6379;
+    static REDIS_USER = 'user';
+    static REDIS_PASSWORD = 'password';
 
     // #endregion
 
@@ -143,6 +145,8 @@ class cache
     #redis = null;
     #redisURL = cache.REDIS_URL;
     #redisPort = cache.REDIS_PORT;
+    #redisUser = cache.REDIS_USER;
+    #redisPassword = cache.REDIS_PASSWORD;
     #redisConnected = false;
     #redisEnabled = true;
 
@@ -162,6 +166,9 @@ class cache
         {
             this.#cacheTTL = cache.CACHE_TTL;
             this.#redisURL = `${cache.REDIS_URL}`;
+            this.#redisPort = `${cache.REDIS_PORT}`;
+            this.#redisUser = `${cache.REDIS_USER}`;
+            this.#redisPassword = `${cache.REDIS_PASSWORD}`;
 
             this._cacheInit();
 
@@ -285,6 +292,42 @@ class cache
     }
 
     /**
+     * @property {string} redisPort the PORT to the Redis Server.
+     */
+    get redisPort()
+    {
+        return this.#redisPort;
+    }
+    set redisPort(value)
+    {
+        this.#redisPort = value;
+    }
+
+    /**
+     * @property {string} redisUser the User to the Redis Server.
+     */
+    get redisUser()
+    {
+        return this.#redisUser;
+    }
+    set redisUser(value)
+    {
+        this.#redisUser = value;
+    }
+
+    /**
+     * @property {string} redisPassword the Password to the Redis Server.
+     */
+    get redisPassword()
+    {
+        return this.#redisPassword;
+    }
+    set redisPassword(value)
+    {
+        this.#redisPassword = value;
+    }
+
+    /**
      * @property {string} _privateExample an example of a private property.
      */
     get _privateExample()
@@ -342,7 +385,7 @@ class cache
      * @param {object} namespace the namespace and configuration to be added to the cache server.
      * @api public
      * @example
-     *     const namespace = {name: 'MicroCODE', type: 'node'};
+     *     const namespace = {name: 'MicroCODE', type: 'node', user: 'username', password: '...'};
      */
     addNamespace(namespace)
     {
@@ -364,19 +407,33 @@ class cache
         if (namespace.type === 'redis' && !this.#redis)
         {
             // if no Redis url is provided, use the default
-            if (namespace.type === 'redis' && !namespace.url)
+            if (!namespace.url)
             {
                 namespace.url = this.#redisURL;
             }
 
             // if no port is provided, use the default
-            if (namespace.type === 'redis' && !namespace.port)
+            if (!namespace.port)
             {
-                namespace.port = 6379;
+                namespace.port = REDIS_PORT;
+            }
+
+            // if no user is provided, use the default
+            if (!namespace.user)
+            {
+                namespace.user = REDIS_USER;
+            }
+
+            // if no password is provided, use the default
+            if (!namespace.password)
+            {
+                namespace.password = REDIS_PASSWORD;
             }
 
             this.#redisURL = `${namespace.url}`;
             this.#redisPort = `${namespace.port}`;
+            this.#redisUser = `${namespace.user}`;
+            this.#redisPassword = `${namespace.password}`;
 
             this._redisInit();
         }
@@ -837,7 +894,12 @@ class cache
 
         if (!this.#redis)
         {
-            this.#redis = Redis.createClient({url: this.#redisURL, port: this.#redisPort});
+            this.#redis = Redis.createClient({
+                url: this.#redisURL,
+                port: this.#redisPort,
+                username: this.#redisUser,
+                password: this.#redisPassword
+            });
 
             this.#redis.on('connect', () =>
             {

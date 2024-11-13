@@ -222,6 +222,8 @@ Contributor's names and contact info...
 
 ## Version History
 
+* v0.6.3
+    - Added USER and PASSWORD to optional REDIS Params for connection.
 * v0.6.2
     - Updated mcode-data to v0.5.5 and mcode-log to v0.5.5
 * v0.6.1
