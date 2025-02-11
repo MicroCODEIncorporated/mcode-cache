@@ -103,6 +103,7 @@ const fs = require('fs').promises;
 
 const Redis = require('redis');
 const NodeCache = require('node-cache');
+const {ifError} = require('assert');
 
 // #endregion
 
@@ -415,19 +416,19 @@ class cache
             // if no port is provided, use the default
             if (!namespace.port)
             {
-                namespace.port = REDIS_PORT;
+                namespace.port = 6379;
             }
 
             // if no user is provided, use the default
             if (!namespace.user)
             {
-                namespace.user = REDIS_USER;
+                namespace.user = null;
             }
 
             // if no password is provided, use the default
             if (!namespace.password)
             {
-                namespace.password = REDIS_PASSWORD;
+                namespace.password = null;
             }
 
             this.#redisURL = `${namespace.url}`;
@@ -739,13 +740,32 @@ class cache
      */
     async fileRead(filePath, fileEncoding = 'utf8')
     {
-        // make the auto-generated cache key for the file
-        const cacheKey = this.fileMakeKey(filePath);
-
-        return this._cacheGet(cacheKey, async () =>
+        try
         {
-            return await fs.readFile(filePath, fileEncoding);
-        });
+            // make the auto-generated cache key for the file
+            const cacheKey = this.fileMakeKey(filePath);
+
+            return this._cacheGet(cacheKey, async () =>
+            {
+                try
+                {
+                    // Check if the file exists and is accessible
+                    await fs.access(filePath, fs.constants.R_OK);
+                }
+                catch (exp)
+                {
+                    mcode.exp(`File is NOT READ accessible: ${filePath}`, MODULE_NAME, exp);
+                    throw new Error(`File READ access error: ${filePath}`);
+                }
+
+                return await fs.readFile(filePath, fileEncoding);
+            });
+        }
+        catch (exp)
+        {
+            mcode.exp(`Exception reading from disk for cache, file: ${filePath}`, MODULE_NAME, exp);
+            return null;
+        }
     }
 
     /**
@@ -770,12 +790,23 @@ class cache
             // cache the new value
             this._cacheSet(cacheKey, fileData);
 
+            try
+            {
+                // Check if the file exists and is accessible
+                await fs.access(filePath, fs.constants.W_OK);
+            }
+            catch (exp)
+            {
+                mcode.exp(`File is NOT WRITE accessible: ${filePath}`, MODULE_NAME, exp);
+                throw new Error(`File WRITE access error: ${filePath}`);
+            }
+
             // write the file to disk
             return await fs.writeFile(filePath, fileData, {encoding: fileEncoding});
         }
         catch (exp)
         {
-            mcode.exp(`Exception writing to disk and caching cache, file: ${filePath}`, MODULE_NAME, exp);
+            mcode.exp(`Exception writing to disk and cache, file: ${filePath}`, MODULE_NAME, exp);
             return null;
         }
     }
@@ -885,21 +916,28 @@ class cache
      */
     _redisInit()
     {
-        // if a client already exists, close it and start a new one
+        if (this.#redisConnected)
+        {
+            mcode.warn(`Redis client is already connected to: ${this.#redisURL}`, MODULE_NAME);
+            return;
+        }
+
         if (this.#redis)
         {
+            mcode.info('Closing existing Redis client before reinitializing.', MODULE_NAME);
             this.#redis.quit();
             this.#redis = null;
         }
 
         if (!this.#redis)
         {
-            this.#redis = Redis.createClient({
-                url: this.#redisURL,
-                port: this.#redisPort,
-                username: this.#redisUser,
-                password: this.#redisPassword
-            });
+            // Set-up Redis client configuration based on security
+            const clientOptions = this.#redisUser && this.#redisPassword
+                ? {url: this.#redisURL, username: this.#redisUser, password: this.#redisPassword}
+                : {url: this.#redisURL};
+
+            // Create Redis Client
+            this.#redis = Redis.createClient(clientOptions);
 
             this.#redis.on('connect', () =>
             {
@@ -910,7 +948,7 @@ class cache
 
             this.#redis.on('error', (err) =>
             {
-                mcode.error(`REDIS client could not connect on: ${this.#redisURL}`, MODULE_NAME, err);
+                mcode.error(`REDIS client error on: ${this.#redisURL}`, MODULE_NAME, err);
             });
 
             this.#redis.connect();
@@ -969,7 +1007,7 @@ class cache
         try
         {
             // if the cache is not enabled, just get the data from the callback
-            if (!this.#cacheEnabled)
+            if (!this.#redisEnabled)
             {
                 return cb();
             }
@@ -1032,7 +1070,7 @@ class cache
         try
         {
             // if the cache is not enabled, just return
-            if (!this.#cacheEnabled)
+            if (!this.#redisEnabled)
             {
                 return;
             }

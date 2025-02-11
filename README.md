@@ -47,10 +47,10 @@ there is inherent latency. Automatically caching these frequenlty used files in 
 
 Normal, uncached code retrieving a file...
 ```
-        const iconContent = await fs.fileRead(iconPath, 'utf8');
+        const iconContent = await fs.readFile(iconPath, 'utf8');
                                   -----------
 ```
-To cache for repeated usage with our package, just chnage "fs.readFile()" to "mcode.fileRead()"...
+To cache for repeated usage with our package, just change "fs.readFile()" to "mcode.fileRead()"...
 ```
         const iconContent = await mcode.fileRead(iconPath, 'utf8');
                                   --------------
@@ -138,7 +138,7 @@ These are the functions we want at the ready in any module for development and d
 | **redisOff**      | Turns the caching of Redis data OFF. (For active development).             | void mcode.redisOff()
 | **cacheClose**    | Closes the Node and Redis caches, and the connection to the Redis Server.  | void mcode.cacheClose(path)
 |                   |                                                                            |
-| File Specific     | These directly replace fs.readFile('filepath', 'encoding')                 |                           |
+| File Specific     | These directly replace "fs" file operations                                |                           |
 | **fileRead**      | Reads a file from storage with a standard 'path' and caches it.            | contents = mcode.fileRead(path, encoding)
 | **fileWrite**     | Writes a file to storage with a standard 'path' and caches it.             | state = mcode.writeRead(path, contents, encoding)
 | **fileDrop**      | Invalidates a standard 'path', forcing a fresh read/cache on next access.  | count = mcode.fileDrop(path)
@@ -222,6 +222,13 @@ Contributor's names and contact info...
 
 ## Version History
 
+* v0.6.5
+    - Added file access verification to Read and Write with condition handlers.
+    - Corrected cache enable/disable switch on REDIS Cache
+    - Corrected REDIS defaults for Port, Username and Password
+* v0.6.4
+    - Corrected cross-spawn  7.0.0 - 7.0.4; Severity: high; Regular Expression Denial of Service
+    - Update mcode-log, mcode-data to v0.5.7 similar corrections.
 * v0.6.3
     - Added USER and PASSWORD to optional REDIS Params for connection.
 * v0.6.2
