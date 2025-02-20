@@ -222,6 +222,8 @@ Contributor's names and contact info...
 
 ## Version History
 
+* v0.6.8
+    - Updated to mcode-data v0.5.8 and mcode-log v0.5.8.
 * v0.6.5
     - Added file access verification to Read and Write with condition handlers.
     - Corrected cache enable/disable switch on REDIS Cache
