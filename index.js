@@ -1,16 +1,19 @@
-// #region  H E A D E R
+// #region  F I L E
 // <copyright file="mcode-cache/index.js" company="MicroCODE Incorporated">Copyright © 2022-2024 MicroCODE Incorporated Troy, MI</copyright><author>Timothy J. McGuire</author>
 // #region  M O D U L E
 // #region  D O C U M E N T A T I O N
-/*
- *      Title:    MicroCODE Data Caching Module
- *      Module:   modules (node_modules/mcode-cache/index.js)
- *      Project:  MicroCODE Common Library
- *      Customer: Internal
- *      Creator:  MicroCODE Incorporated
- *      Date:     February 2024
- *      Author:   Timothy J McGuire
+/**
+ *      Project:  MicroCODE MERN Applications
+ *      Customer: Internal + MIT xPRO Course
+ *      @module   'mcode-cache.js'
+ *      @memberof mcode
+ *      @created  January 2022-2024
+ *      @author   Timothy McGuire, MicroCODE, Inc.
+ *      @description >
+ *      MicroCODE File and Data Caching Library
  *
+ *      LICENSE:
+ *      --------
  *      MIT License: MicroCODE.mcode-cache
  *
  *      Copyright (c) 2022-2024 Timothy McGuire, MicroCODE, Inc.
@@ -36,7 +39,6 @@
  *
  *      DESCRIPTION:
  *      ------------
- *
  *      This module implements the MicroCODE's Common JavaScript functions for data caching.
  *
  *      NOTE:
@@ -66,7 +68,6 @@
  *
  *      REFERENCES:
  *      -----------
- *
  *      1. MIT xPRO Course: Professional Certificate in Coding: Full Stack Development with MERN
  *
  *      2. MicroCODE JavaScript Style Guide
@@ -78,16 +79,24 @@
  *
  *      MODIFICATIONS:
  *      --------------
+ *      Date:         By-Group:   Rev:    Description:
  *
- *  Date:         By-Group:   Rev:    Description:
- *
- *  30-Jan-2024   TJM-MCODE  {0001}   New module for common reusable JavaScript data caching functions.
- *  01-Feb-2024   TJM-MCODE  {0002}   Changed to the Universal Module Definition (UMD) pattern to support AMD,
- *                                    CommonJS/Node.js, and browser global in our exported module.
- *  15-Sep-2024   TJM-MCODE  {0003}   Extended to support *node-cache* package for caching local information
- *                                    to avoid network latency, this is now the default cache provider.
+ *      30-Jan-2024   TJM-MCODE  {0001}   New module for common reusable JavaScript data caching functions.
+ *      01-Feb-2024   TJM-MCODE  {0002}   Changed to the Universal Module Definition (UMD) pattern to support AMD,
+ *                                        CommonJS/Node.js, and browser global in our exported module.
+ *      15-Sep-2024   TJM-MCODE  {0003}   Extended to support *node-cache* package for caching local information
+ *                                        to avoid network latency, this is now the default cache provider.
  *
  *
+ *
+ *
+ * NOTE: This module follow's MicroCODE's JavaScript Style Guide and Template JS file, see:
+ *
+ *       o  https://github.com/MicroCODEIncorporated/JavaScriptSG
+ *       o  https://github.com/MicroCODEIncorporated/TemplatesJS
+ *
+ * ...be sure to check out the CTRL-SHIFT+K, +L, +J keybaord shortcuts in Visual Studio Code
+ *    for taking advance of the #regions in this file and our templates.
  *
  */
 
@@ -97,7 +106,9 @@
 
 // #region  I N C L U D E S
 
-const mcode = require('mcode-log');
+const log = require('mcode-log');
+const data = require('mcode-data');
+
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -185,7 +196,7 @@ class cache
             cache.instance = this;
         }
 
-        mcode.done(`mcode-cache initialized with namespace: ${this.#cacheNamespace}`, MODULE_NAME);
+        log.done(`mcode-cache initialized with namespace: ${this.#cacheNamespace}`, MODULE_NAME);
 
         return cache.instance;
     }
@@ -261,7 +272,7 @@ class cache
     set cacheNamespace(value)
     {
         this.#cacheNamespace = value;
-        mcode.success(`Switched to namespace: '${this.#cacheNamespace}`, MODULE_NAME);
+        log.success(`Switched to namespace: '${this.#cacheNamespace}`, MODULE_NAME);
     }
 
     /**
@@ -393,14 +404,14 @@ class cache
         // get the namespace name and type
         if (!namespace || !namespace.name || !namespace.type)
         {
-            mcode.warn(`Invalid namespace: it must have a 'name' and 'type' defined.`, MODULE_NAME);
+            log.warn(`Invalid namespace: it must have a 'name' and 'type' defined.`, MODULE_NAME);
             return;
         }
 
         // only allow 'node' or 'redis' cache types
         if (namespace.type !== 'node' && namespace.type !== 'redis')
         {
-            mcode.warn(`Invalid cache type: ${namespace.type}, selected for namespace: ${namespace.name}, must be 'node' or 'redis'.`, MODULE_NAME);
+            log.warn(`Invalid cache type: ${namespace.type}, selected for namespace: ${namespace.name}, must be 'node' or 'redis'.`, MODULE_NAME);
             return;
         }
 
@@ -442,7 +453,7 @@ class cache
         // add the namespace to the cache server
         this.#cacheNamespaces[namespace.name] = namespace.type;
 
-        mcode.success(`Added namespace: '${namespace.name}`, MODULE_NAME);
+        log.success(`Added namespace: '${namespace.name}`, MODULE_NAME);
     }
 
     /**
@@ -754,7 +765,7 @@ class cache
                 }
                 catch (exp)
                 {
-                    mcode.exp(`File is NOT READ accessible: ${filePath}`, MODULE_NAME, exp);
+                    log.exp(`File is NOT READ accessible: ${filePath}`, MODULE_NAME, exp);
                     throw new Error(`File READ access error: ${filePath}`);
                 }
 
@@ -763,7 +774,7 @@ class cache
         }
         catch (exp)
         {
-            mcode.exp(`Exception reading from disk for cache, file: ${filePath}`, MODULE_NAME, exp);
+            log.exp(`Exception reading from disk for cache, file: ${filePath}`, MODULE_NAME, exp);
             return null;
         }
     }
@@ -797,7 +808,7 @@ class cache
             }
             catch (exp)
             {
-                mcode.exp(`File is NOT WRITE accessible: ${filePath}`, MODULE_NAME, exp);
+                log.exp(`File is NOT WRITE accessible: ${filePath}`, MODULE_NAME, exp);
                 throw new Error(`File WRITE access error: ${filePath}`);
             }
 
@@ -806,7 +817,7 @@ class cache
         }
         catch (exp)
         {
-            mcode.exp(`Exception writing to disk and cache, file: ${filePath}`, MODULE_NAME, exp);
+            log.exp(`Exception writing to disk and cache, file: ${filePath}`, MODULE_NAME, exp);
             return null;
         }
     }
@@ -903,7 +914,7 @@ class cache
         if (!this.#cache)
         {
             this.#cache = new NodeCache({stdTTL: cache.CACHE_TTL});
-            mcode.done(`mcode-cache initialized with TTL: ${cache.CACHE_TTL} 📣`, MODULE_NAME);
+            log.done(`mcode-cache initialized with TTL: ${cache.CACHE_TTL} 📣`, MODULE_NAME);
         }
     }
 
@@ -918,13 +929,13 @@ class cache
     {
         if (this.#redisConnected)
         {
-            mcode.warn(`Redis client is already connected to: ${this.#redisURL}`, MODULE_NAME);
+            log.warn(`Redis client is already connected to: ${this.#redisURL}`, MODULE_NAME);
             return;
         }
 
         if (this.#redis)
         {
-            mcode.info('Closing existing Redis client before reinitializing.', MODULE_NAME);
+            log.info('Closing existing Redis client before reinitializing.', MODULE_NAME);
             this.#redis.quit();
             this.#redis = null;
         }
@@ -941,14 +952,15 @@ class cache
 
             this.#redis.on('connect', () =>
             {
-                mcode.done(`REDIS client connected on: ${this.#redisURL} 📣`, MODULE_NAME);
+                log.done(`REDIS client connected on: ${this.#redisURL} 📣`, MODULE_NAME);
 
                 this.#redisConnected = true;
             });
 
             this.#redis.on('error', (err) =>
             {
-                mcode.error(`REDIS client error on: ${this.#redisURL}`, MODULE_NAME, err);
+                log.error(`REDIS client error on: ${this.#redisURL}`, MODULE_NAME,
+                    data.default(err, 'REDIS is unreachable, check network connection, VPNs, firewalls, etc.'));
             });
 
             this.#redis.connect();
@@ -988,7 +1000,7 @@ class cache
         }
         catch (exp)
         {
-            mcode.exp(`Exception getting cached '${cacheKey}' key value in NODE cache.`, MODULE_NAME, exp);
+            log.exp(`Exception getting cached '${cacheKey}' key value in NODE cache.`, MODULE_NAME, exp);
 
             return cb();  // get the actual data from the data-specific callback function
         }
@@ -1027,7 +1039,7 @@ class cache
         }
         catch (exp)
         {
-            mcode.exp(`Exception getting cached '${cacheKey}' key value in REDIS cache.`, MODULE_NAME, exp);
+            log.exp(`Exception getting cached '${cacheKey}' key value in REDIS cache.`, MODULE_NAME, exp);
 
             return cb();  // get the actual data from the data-specific callback function
         }
@@ -1054,7 +1066,7 @@ class cache
         }
         catch (exp)
         {
-            mcode.exp(`Exception setting ${cacheKey} value in NODE cache.`, MODULE_NAME, exp);
+            log.exp(`Exception setting ${cacheKey} value in NODE cache.`, MODULE_NAME, exp);
         }
     }
 
@@ -1079,7 +1091,7 @@ class cache
         }
         catch (exp)
         {
-            mcode.exp(`Exception setting ${cacheKey} value in REDIS cache.`, MODULE_NAME, exp);
+            log.exp(`Exception setting ${cacheKey} value in REDIS cache.`, MODULE_NAME, exp);
         }
     }
 

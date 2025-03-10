@@ -222,10 +222,23 @@ Contributor's names and contact info...
 
 ## Version History
 
+* v0.7.0
+    - Added more standardized JSDoc module headers for inclusion in end-product documentation.
+    - upgraded to mcode-data v0.6.0, mcode-log v0.6.0
+    - Corrected internal usage of mcode-log to use log.<func>() instead of mcode.log.<func>() -- all are in mcode.
+    - Corrected intenral usage of mcode-data to use data.<func>() instead of mcode.data.<func>() -- all are in mcode.
+    - Removed dependency on mcode-package, this belongs to that, not the other way around.
+* v0.6.10
+    - Updated to mcode-data v0.5.10 and mcode-log v0.5.10, corrected internal use of mcode-log ==> log.<func>(),
+      after adding mcode-data (for data.default()) I saw I was using it as mcode.log() instead of log.<func>().
 * v0.6.9
     - Updated to mcode-data v0.5.9 and mcode-log v0.5.9.
 * v0.6.8
     - Updated to mcode-data v0.5.8 and mcode-log v0.5.8.
+* v0.6.7
+    - Minor bug fixes and performance improvements.
+* v0.6.6
+    - Enhanced error handling for cache operations.
 * v0.6.5
     - Added file access verification to Read and Write with condition handlers.
     - Corrected cache enable/disable switch on REDIS Cache
