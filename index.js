@@ -106,15 +106,14 @@
 
 // #region  I N C L U D E S
 
-const log = require('mcode-log');
-const data = require('mcode-data');
+const _log = require('mcode-log');
+const _data = require('mcode-data');
 
 const path = require('path');
 const fs = require('fs').promises;
 
 const Redis = require('redis');
 const NodeCache = require('node-cache');
-const {ifError} = require('assert');
 
 // #endregion
 
@@ -196,7 +195,7 @@ class cache
             cache.instance = this;
         }
 
-        log.done(`mcode-cache initialized with namespace: ${this.#cacheNamespace}`, MODULE_NAME);
+        _log.done(`mcode-cache initialized with namespace: ${this.#cacheNamespace}`, MODULE_NAME);
 
         return cache.instance;
     }
@@ -272,7 +271,7 @@ class cache
     set cacheNamespace(value)
     {
         this.#cacheNamespace = value;
-        log.success(`Switched to namespace: '${this.#cacheNamespace}`, MODULE_NAME);
+        _log.success(`Switched to namespace: '${this.#cacheNamespace}`, MODULE_NAME);
     }
 
     /**
@@ -404,14 +403,14 @@ class cache
         // get the namespace name and type
         if (!namespace || !namespace.name || !namespace.type)
         {
-            log.warn(`Invalid namespace: it must have a 'name' and 'type' defined.`, MODULE_NAME);
+            _log.warn(`Invalid namespace: it must have a 'name' and 'type' defined.`, MODULE_NAME);
             return;
         }
 
         // only allow 'node' or 'redis' cache types
         if (namespace.type !== 'node' && namespace.type !== 'redis')
         {
-            log.warn(`Invalid cache type: ${namespace.type}, selected for namespace: ${namespace.name}, must be 'node' or 'redis'.`, MODULE_NAME);
+            _log.warn(`Invalid cache type: ${namespace.type}, selected for namespace: ${namespace.name}, must be 'node' or 'redis'.`, MODULE_NAME);
             return;
         }
 
@@ -453,7 +452,7 @@ class cache
         // add the namespace to the cache server
         this.#cacheNamespaces[namespace.name] = namespace.type;
 
-        log.success(`Added namespace: '${namespace.name}`, MODULE_NAME);
+        _log.success(`Added namespace: '${namespace.name}`, MODULE_NAME);
     }
 
     /**
@@ -496,7 +495,7 @@ class cache
      * @param {function} cb the callback function to get fresh value.
      * @returns {Promise} the cached value.
      */
-    async cacheGet(key, cb = () => {return "<not defined>";})
+    async cacheGet(key, cb = () => {return undefined;})
     {
         // make the auto-generated cache key for the 'key' - get from current namespace, add if not cached
         const cacheKey = this.fileMakeKey(key);
@@ -765,7 +764,7 @@ class cache
                 }
                 catch (exp)
                 {
-                    log.exp(`File is NOT READ accessible: ${filePath}`, MODULE_NAME, exp);
+                    _log.exp(`File is NOT READ accessible: ${filePath}`, MODULE_NAME, exp);
                     throw new Error(`File READ access error: ${filePath}`);
                 }
 
@@ -774,7 +773,7 @@ class cache
         }
         catch (exp)
         {
-            log.exp(`Exception reading from disk for cache, file: ${filePath}`, MODULE_NAME, exp);
+            _log.exp(`Exception reading from disk for cache, file: ${filePath}`, MODULE_NAME, exp);
             return null;
         }
     }
@@ -808,7 +807,7 @@ class cache
             }
             catch (exp)
             {
-                log.exp(`File is NOT WRITE accessible: ${filePath}`, MODULE_NAME, exp);
+                _log.exp(`File is NOT WRITE accessible: ${filePath}`, MODULE_NAME, exp);
                 throw new Error(`File WRITE access error: ${filePath}`);
             }
 
@@ -817,7 +816,7 @@ class cache
         }
         catch (exp)
         {
-            log.exp(`Exception writing to disk and cache, file: ${filePath}`, MODULE_NAME, exp);
+            _log.exp(`Exception writing to disk and cache, file: ${filePath}`, MODULE_NAME, exp);
             return null;
         }
     }
@@ -914,7 +913,7 @@ class cache
         if (!this.#cache)
         {
             this.#cache = new NodeCache({stdTTL: cache.CACHE_TTL});
-            log.done(`mcode-cache initialized with TTL: ${cache.CACHE_TTL} 📣`, MODULE_NAME);
+            _log.done(`mcode-cache initialized with TTL: ${cache.CACHE_TTL} 📣`, MODULE_NAME);
         }
     }
 
@@ -929,13 +928,13 @@ class cache
     {
         if (this.#redisConnected)
         {
-            log.warn(`Redis client is already connected to: ${this.#redisURL}`, MODULE_NAME);
+            _log.warn(`Redis client is already connected to: ${this.#redisURL}`, MODULE_NAME);
             return;
         }
 
         if (this.#redis)
         {
-            log.info('Closing existing Redis client before reinitializing.', MODULE_NAME);
+            _log.info('Closing existing Redis client before reinitializing.', MODULE_NAME);
             this.#redis.quit();
             this.#redis = null;
         }
@@ -952,15 +951,15 @@ class cache
 
             this.#redis.on('connect', () =>
             {
-                log.done(`REDIS client connected on: ${this.#redisURL} 📣`, MODULE_NAME);
+                _log.done(`REDIS client connected on: ${this.#redisURL} 📣`, MODULE_NAME);
 
                 this.#redisConnected = true;
             });
 
             this.#redis.on('error', (err) =>
             {
-                log.error(`REDIS client error on: ${this.#redisURL}`, MODULE_NAME,
-                    data.default(err, 'REDIS is unreachable, check network connection, VPNs, firewalls, etc.'));
+                _log.error(`REDIS client error on: ${this.#redisURL}`, MODULE_NAME,
+                    _data.default(err, 'REDIS is unreachable, check network connection, VPNs, firewalls, etc.'));
             });
 
             this.#redis.connect();
@@ -1000,7 +999,7 @@ class cache
         }
         catch (exp)
         {
-            log.exp(`Exception getting cached '${cacheKey}' key value in NODE cache.`, MODULE_NAME, exp);
+            _log.exp(`Exception getting cached '${cacheKey}' key value in NODE cache.`, MODULE_NAME, exp);
 
             return cb();  // get the actual data from the data-specific callback function
         }
@@ -1039,7 +1038,7 @@ class cache
         }
         catch (exp)
         {
-            log.exp(`Exception getting cached '${cacheKey}' key value in REDIS cache.`, MODULE_NAME, exp);
+            _log.exp(`Exception getting cached '${cacheKey}' key value in REDIS cache.`, MODULE_NAME, exp);
 
             return cb();  // get the actual data from the data-specific callback function
         }
@@ -1066,7 +1065,7 @@ class cache
         }
         catch (exp)
         {
-            log.exp(`Exception setting ${cacheKey} value in NODE cache.`, MODULE_NAME, exp);
+            _log.exp(`Exception setting ${cacheKey} value in NODE cache.`, MODULE_NAME, exp);
         }
     }
 
@@ -1091,7 +1090,7 @@ class cache
         }
         catch (exp)
         {
-            log.exp(`Exception setting ${cacheKey} value in REDIS cache.`, MODULE_NAME, exp);
+            _log.exp(`Exception setting ${cacheKey} value in REDIS cache.`, MODULE_NAME, exp);
         }
     }
 
