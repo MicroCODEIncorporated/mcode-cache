@@ -1,6 +1,6 @@
 {
   "name": "mcode-cache",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Our Data Caching functions. These support files, JSON, JS Objects, any primitive, etc. And provide common keying support.",
   "main": "index.js",
   "scripts": {

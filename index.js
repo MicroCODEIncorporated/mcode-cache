@@ -149,8 +149,7 @@ class cache
     #cache = null;
     #cacheTTL = cache.CACHE_TTL;
     #cacheNamespace = '';
-    #cacheNamespaces = {};
-    #cacheEnabled = true;
+    #cacheNamespaces = [];
 
     // Redis instance
     #redis = null;
@@ -159,7 +158,6 @@ class cache
     #redisUser = cache.REDIS_USER;
     #redisPassword = cache.REDIS_PASSWORD;
     #redisConnected = false;
-    #redisEnabled = true;
 
     #privateExample = 'PRIVATE PROPERTY';
 
@@ -188,9 +186,6 @@ class cache
 
             // make it current
             this.#cacheNamespace = 'MicroCODE';
-
-            // generate a default cache key for the current namespace
-            this.cacheSet('Default', 'node-cache');
 
             cache.instance = this;
         }
@@ -250,12 +245,13 @@ class cache
     }
 
     /**
-     * @property {string} cacheNamespaces the 'prefix' used to group our keys in the cache Server.
-     * This property switches to a new namespace, to be used for all subsequent cache operations as the default.
-     * The namespace must already exist in the cache servers 'namespace' list, see addNamespace().
+     * @property {array} cacheNamespaces returns an array containing all the namespaces defined in the cache server.
+     * The array contains objects with name, type (node or redis), enabled properties, and current statistics for each namespace.
      */
     get cacheNamespaces()
     {
+        // Update statistics for each namespace before returning
+        this._updateNamespaceStatistics();
         return this.#cacheNamespaces;
     }
 
@@ -272,22 +268,6 @@ class cache
     {
         this.#cacheNamespace = value;
         _log.success(`Switched to namespace: '${this.#cacheNamespace}`, MODULE_NAME);
-    }
-
-    /**
-     * @property {number} cacheEnabled returns a value indicating whether or not the Node Caches are caching the namespaces.
-     */
-    get cacheEnabled()
-    {
-        return this.#cacheEnabled;
-    }
-
-    /**
-     * @property {number} redisEnabled returns a value indicating whether or not Redis Caches is caching the namespaces.
-     */
-    get redisEnabled()
-    {
-        return this.#redisEnabled;
     }
 
     /**
@@ -450,7 +430,16 @@ class cache
         }
 
         // add the namespace to the cache server
-        this.#cacheNamespaces[namespace.name] = namespace.type;
+        this.#cacheNamespaces.push({
+            name: namespace.name,
+            type: namespace.type,
+            enabled: true,
+            hits: 0,        // Number of successful cache retrievals
+            misses: 0,      // Number of failed cache retrievals (key not found/expired)
+            keys: 0,        // Current number of keys in cache
+            ksize: 0,       // Current key size in bytes
+            vsize: 0        // Current value size in bytes
+        });
 
         _log.success(`Added namespace: '${namespace.name}`, MODULE_NAME);
     }
@@ -500,8 +489,16 @@ class cache
         // make the auto-generated cache key for the 'key' - get from current namespace, add if not cached
         const cacheKey = this.fileMakeKey(key);
 
+        // get the namespace info for the current namespace
+        const namespaceInfo = this._getNamespaceInfo(this.#cacheNamespace);
+        if (!namespaceInfo)
+        {
+            _log.warn(`Current namespace '${this.#cacheNamespace}' not found`, MODULE_NAME);
+            return cb();
+        }
+
         // get the value from the cache associated with the current namespace
-        if (this.#cacheNamespaces[this.#cacheNamespace] === 'redis')
+        if (namespaceInfo.type === 'redis')
         {
             // use the Redis client
             return await this.#redis.get(cacheKey);
@@ -523,8 +520,16 @@ class cache
         // make the auto-generated cache key for the 'key' - set into current namespace
         const cacheKey = this.fileMakeKey(key);
 
+        // get the namespace info for the current namespace
+        const namespaceInfo = this._getNamespaceInfo(this.#cacheNamespace);
+        if (!namespaceInfo)
+        {
+            _log.warn(`Current namespace '${this.#cacheNamespace}' not found`, MODULE_NAME);
+            return;
+        }
+
         // set the value in the cache associated with the current namespace
-        if (this.#cacheNamespaces[this.#cacheNamespace] === 'redis')
+        if (namespaceInfo.type === 'redis')
         {
             // use the Redis client
             return await this.#redis.set(cacheKey, value);
@@ -548,8 +553,16 @@ class cache
         // make the auto-generated cache key for the 'key' - drop from current namespace
         const cacheKey = this.fileMakeKey(key);
 
+        // get the namespace info for the current namespace
+        const namespaceInfo = this._getNamespaceInfo(this.#cacheNamespace);
+        if (!namespaceInfo)
+        {
+            _log.warn(`Current namespace '${this.#cacheNamespace}' not found`, MODULE_NAME);
+            return 0;
+        }
+
         // delete the value from the cache associated with the current namespace
-        if (this.#cacheNamespaces[this.#cacheNamespace] === 'redis')
+        if (namespaceInfo.type === 'redis')
         {
             // use the Redis client
             return await this._redisDrop(cacheKey);
@@ -575,26 +588,24 @@ class cache
     {
         let result = 0;
 
-        for (const thisNamespace in this.#cacheNamespaces)
+        for (const namespaceInfo of this.#cacheNamespaces)
         {
-            if (thisNamespace === namespace || namespace === '*')
+            if (namespaceInfo.name === namespace || namespace === '*')
             {
-                const cacheType = this.#cacheNamespaces[thisNamespace];
-
-                if (cacheType === 'node' && (cache === 'node' || cache === '*'))
+                if (namespaceInfo.type === 'node' && (cache === 'node' || cache === '*'))
                 {
                     // Get keys from the Node cache
-                    const nodeKeys = await this._cacheKeys(`${thisNamespace}:${pattern}`);
+                    const nodeKeys = await this._cacheKeys(`${namespaceInfo.name}:${pattern}`);
                     result += nodeKeys.length;
 
                     // Delete all keys from the Node cache
                     await Promise.all(nodeKeys.map(key => this.#cache.del(key)));
                 }
 
-                if (cacheType === 'redis' && (cache === 'redis' || cache === '*'))
+                if (namespaceInfo.type === 'redis' && (cache === 'redis' || cache === '*'))
                 {
                     // Get keys from the Redis client
-                    const redisKeys = await this.#redis.keys(`${thisNamespace}:${pattern}`);
+                    const redisKeys = await this.#redis.keys(`${namespaceInfo.name}:${pattern}`);
                     result += redisKeys.length;
 
                     // Delete all keys from the Redis cache
@@ -611,39 +622,123 @@ class cache
      * @func cacheListAll
      * @memberof mcode.cache
      * @desc Lists all keys from the cache based on the App's namespace.
+     * Includes timeout protection to prevent hanging on non-responsive caches (especially Redis).
+     * Provides graceful degradation - continues processing other namespaces if one fails.
      * @param {string} cache the cache to list all keys from.
      * @param {string} namespace the namespace to list all keys from.
      * @param {string} pattern the key pattern to list all keys from.
-     * @returns {Array} an array of namespace keys in the cache.
+     * @param {boolean} includeErrors whether to include error information in the response.
+     * @returns {Array|Object} returns an array of keys, or an object with keys and errors if includeErrors=true.
      * @api public
      * @example
      *    const result = await mcode.cacheListAll();
-     *    const result = await mcode.cacheListAll({cache: 'node', namespace: '*', keyStar: '*'});
+     *    const result = await mcode.cacheListAll({cache: 'node', namespace: '*', pattern: '*'});
+     *    const {keys, errors} = await mcode.cacheListAll({includeErrors: true});
      */
-    async cacheListAll({cache = '*', namespace = '*', pattern = '*'})
+    async cacheListAll({cache = '*', namespace = '*', pattern = '*', includeErrors = false})
     {
         let keys = [];
+        let errors = [];
+        let processedNamespaces = 0;
+        let failedNamespaces = 0;
 
-        for (const thisNamespace in this.#cacheNamespaces)
+        _log.info(`Starting cacheListAll for cache: ${cache}, namespace: ${namespace}, pattern: ${pattern}`, MODULE_NAME);
+
+        for (const namespaceInfo of this.#cacheNamespaces)
         {
-            if (thisNamespace === namespace || namespace === '*')
+            if (namespaceInfo.name === namespace || namespace === '*')
             {
-                const cacheType = this.#cacheNamespaces[thisNamespace];
-
-                if (cacheType === cache || cache === '*')
+                if (namespaceInfo.type === cache || cache === '*')
                 {
-                    if (cacheType === 'node')
+                    processedNamespaces++;
+                    _log.debug(`Processing namespace: ${namespaceInfo.name} (${namespaceInfo.type})`, MODULE_NAME);
+
+                    try
                     {
-                        // use the Node cache - NOTE: node-cache.keys() does not support wildcards
-                        keys = keys.concat(await this._cacheKeys(`${thisNamespace}:${pattern}`));
+                        let cacheKeys = [];
+                        const startTime = Date.now();
+
+                        // Get keys from the appropriate cache type with timeout protection
+                        if (namespaceInfo.type === 'node')
+                        {
+                            // use the Node cache - NOTE: node-cache.keys() does not support wildcards
+                            cacheKeys = await this._cacheKeys(`${namespaceInfo.name}:${pattern}`);
+                        }
+                        else if (namespaceInfo.type === 'redis')
+                        {
+                            // Check if Redis is connected before attempting operation
+                            if (!this.#redisConnected)
+                            {
+                                throw new Error('Redis not connected');
+                            }
+
+                            // use the Redis client with timeout protection
+                            const redisKeysPromise = this.#redis.keys(`${namespaceInfo.name}:${pattern}`);
+                            cacheKeys = await this._withTimeout(redisKeysPromise, 5000, `Redis keys operation for ${namespaceInfo.name}`);
+                        }
+
+                        const keysTime = Date.now() - startTime;
+                        _log.debug(`Retrieved ${cacheKeys.length} keys from ${namespaceInfo.name} in ${keysTime}ms`, MODULE_NAME);
+
+                        // Process the keys using common logic with timeout protection
+                        const listKeysPromise = this._listKeys(cacheKeys, namespaceInfo.name, namespaceInfo.type);
+                        const keyList = await this._withTimeout(listKeysPromise, 10000, `Cache list processing for ${namespaceInfo.name}`);
+
+                        keys = keys.concat(keyList);
+
+                        const totalTime = Date.now() - startTime;
+                        _log.debug(`Successfully processed ${keyList.length} keys from namespace ${namespaceInfo.name} in ${totalTime}ms`, MODULE_NAME);
                     }
-                    if (cacheType === 'redis')
+                    catch (exp)
                     {
-                        // use the Redis client
-                        keys = keys.concat(await this.#redis.keys(`${thisNamespace}:${pattern}`));
+                        failedNamespaces++;
+                        const errorInfo = {
+                            namespace: namespaceInfo.name,
+                            type: namespaceInfo.type,
+                            error: exp.message,
+                            timestamp: new Date().toISOString()
+                        };
+
+                        errors.push(errorInfo);
+                        _log.warn(`Failed to get keys for namespace '${namespaceInfo.name}' (${namespaceInfo.type}): ${exp.message}`, MODULE_NAME);
+
+                        // Add a placeholder entry to indicate this namespace had issues
+                        if (includeErrors)
+                        {
+                            keys.push({
+                                namespace: namespaceInfo.name,
+                                key: '<ERROR>',
+                                cache: namespaceInfo.type,
+                                type: 'error',
+                                preview: `Failed to retrieve keys: ${exp.message}`,
+                                error: true,
+                                errorDetails: errorInfo
+                            });
+                        }
+
+                        // Continue with other namespaces instead of failing completely
                     }
                 }
             }
+        }
+
+        const summary = `Processed ${processedNamespaces} namespaces, ${failedNamespaces} failed, returned ${keys.length} keys`;
+        _log.info(`cacheListAll completed: ${summary}`, MODULE_NAME);
+
+        // Return keys with optional error information
+        if (includeErrors)
+        {
+            return {
+                keys: keys,
+                errors: errors,
+                summary: {
+                    totalNamespaces: processedNamespaces,
+                    failedNamespaces: failedNamespaces,
+                    successfulNamespaces: processedNamespaces - failedNamespaces,
+                    totalKeys: keys.filter(k => !k.error).length,
+                    errorKeys: keys.filter(k => k.error).length
+                }
+            };
         }
 
         return keys;
@@ -652,47 +747,129 @@ class cache
     /**
      * @func cacheOn
      * @memberof mcode.cache
-     * @desc Turns ON caching in the Node caches.
+     * @desc Turns ON caching for a specific namespace.
+     * @param {string} cacheName the name of the cache namespace to enable.
+     * @return {boolean} true if the namespace was found and enabled, false otherwise.
      * @api public
      */
-    async cacheOn()
+    async cacheOn(cacheName)
     {
-        this.#cacheEnabled = true;
+        const namespace = this.#cacheNamespaces.find(ns => ns.name === cacheName);
+        if (namespace)
+        {
+            namespace.enabled = true;
+            _log.success(`Enabled caching for namespace: ${cacheName}`, MODULE_NAME);
+            return true;
+        }
+        else
+        {
+            _log.warn(`Namespace '${cacheName}' not found`, MODULE_NAME);
+            return false;
+        }
     }
 
     /**
      * @func cacheOff
      * @memberof mcode.cache
-     * @desc Turns OFF caching in the Node caches.
+     * @desc Turns OFF caching for a specific namespace.
+     * @param {string} cacheName the name of the cache namespace to disable.
+     * @return {boolean} true if the namespace was found and disabled, false otherwise.
      * @api public
      */
-    async cacheOff()
+    async cacheOff(cacheName)
     {
-        this.#cacheEnabled = false;
-        this.cacheDropAll({cache: 'node', namespace: '*', pattern: '*'});
+        const namespace = this.#cacheNamespaces.find(ns => ns.name === cacheName);
+        if (namespace)
+        {
+            namespace.enabled = false;
+            _log.success(`Disabled caching for namespace: ${cacheName}`, MODULE_NAME);
+
+            // Drop all keys from this specific namespace
+            this.cacheDropAll({cache: namespace.type, namespace: cacheName, pattern: '*'});
+            return true;
+        }
+        else
+        {
+            _log.warn(`Namespace '${cacheName}' not found`, MODULE_NAME);
+            return false;
+        }
     }
 
     /**
-     * @func redisOn
-     * @memberof mcode.redis
-     * @desc Turns ON caching in the Redis caches.
+     * @func cacheEnabled
+     * @memberof mcode.cache
+     * @desc Checks if caching is enabled for a specific namespace.
+     * @param {string} cacheName the name of the cache namespace to check.
+     * @returns {boolean} true if caching is enabled for the namespace, false otherwise.
      * @api public
+     * @example
+     *   const isEnabled = mcode.cacheEnabled('MicroCODE');
      */
-    async redisOn()
+    cacheEnabled(cacheName)
     {
-        this.#redisEnabled = true;
+        const namespace = this.#cacheNamespaces.find(ns => ns.name === cacheName);
+        if (namespace)
+        {
+            return namespace.enabled;
+        }
+        else
+        {
+            _log.warn(`Namespace '${cacheName}' not found`, MODULE_NAME);
+            return false;
+        }
     }
 
     /**
-     * @func redisOff
-     * @memberof mcode.redis
-     * @desc Turns OFF caching in the Redis caches.
+     * @func refreshCacheStatistics
+     * @memberof mcode.cache
+     * @desc Refreshes cache statistics for all Redis namespaces (async operation).
+     * @returns {Promise} Promise that resolves when statistics are updated.
      * @api public
+     * @example
+     *   await mcode.refreshCacheStatistics();
      */
-    async redisOff()
+    async refreshCacheStatistics()
     {
-        this.#redisEnabled = false;
-        this.cacheDropAll({cache: 'redis', namespace: '*', pattern: '*'});
+        for (const namespace of this.#cacheNamespaces)
+        {
+            if (namespace.type === 'redis' && this.#redis && this.#redisConnected)
+            {
+                try
+                {
+                    // Get keys for this specific namespace from Redis
+                    const namespaceKeys = await this.#redis.keys(`${namespace.name}:*`);
+                    namespace.keys = namespaceKeys.length;
+
+                    // Calculate sizes for this namespace
+                    let ksize = 0;
+                    let vsize = 0;
+
+                    for (const key of namespaceKeys)
+                    {
+                        ksize += Buffer.byteLength(key, 'utf8');
+                        try
+                        {
+                            const value = await this.#redis.get(key);
+                            if (value !== null)
+                            {
+                                vsize += Buffer.byteLength(value, 'utf8');
+                            }
+                        }
+                        catch (error)
+                        {
+                            // Skip if key is not accessible
+                        }
+                    }
+
+                    namespace.ksize = ksize;
+                    namespace.vsize = vsize;
+                }
+                catch (error)
+                {
+                    _log.warn(`Could not refresh statistics for Redis namespace '${namespace.name}'`, MODULE_NAME);
+                }
+            }
+        }
     }
 
     /**
@@ -708,13 +885,16 @@ class cache
     {
         if (this.#cache)
         {
+            // Close the node-cache instance properly
+            this.#cache.close();
             this.#cache = null;
         }
 
         if (this.#redis)
         {
-            this.#redis.quit();
+            await this.#redis.quit();
             this.#redis = null;
+            this.#redisConnected = false;
         }
     }
 
@@ -896,6 +1076,96 @@ class cache
     // #region  M E T H O D S – P R I V A T E
 
     /**
+     * @function _getNamespaceInfo
+     * @api private
+     * @memberof mcode.cache
+     * @desc Gets namespace information by name.
+     * @param {string} namespaceName the name of the namespace to find.
+     * @returns {object|null} the namespace object or null if not found.
+     */
+    _getNamespaceInfo(namespaceName)
+    {
+        return this.#cacheNamespaces.find(ns => ns.name === namespaceName) || null;
+    }
+
+    /**
+     * @function _withTimeout
+     * @api private
+     * @memberof mcode.cache
+     * @desc Wraps a promise with a timeout to prevent hanging operations.
+     * @param {Promise} promise the promise to wrap with timeout.
+     * @param {number} timeoutMs the timeout in milliseconds.
+     * @param {string} operation the name of the operation for error messages.
+     * @returns {Promise} the wrapped promise that will reject if timeout is reached.
+     */
+    _withTimeout(promise, timeoutMs, operation = 'Cache operation')
+    {
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`${operation} timeout after ${timeoutMs}ms`)), timeoutMs)
+        );
+
+        return Promise.race([promise, timeoutPromise]);
+    }
+
+    /**
+     * @function _updateNamespaceStatistics
+     * @api private
+     * @memberof mcode.cache
+     * @desc Updates cache statistics for all namespaces.
+     */
+    _updateNamespaceStatistics()
+    {
+        for (const namespace of this.#cacheNamespaces)
+        {
+            try
+            {
+                if (namespace.type === 'node')
+                {
+                    // Get keys for this specific namespace
+                    const namespaceKeys = this.#cache.keys().filter(key => key.startsWith(`${namespace.name}:`));
+                    namespace.keys = namespaceKeys.length;
+
+                    // Calculate sizes for this namespace
+                    let ksize = 0;
+                    let vsize = 0;
+
+                    for (const key of namespaceKeys)
+                    {
+                        ksize += Buffer.byteLength(key, 'utf8');
+                        const value = this.#cache.get(key);
+                        if (value !== undefined)
+                        {
+                            vsize += Buffer.byteLength(JSON.stringify(value), 'utf8');
+                        }
+                    }
+
+                    namespace.ksize = ksize;
+                    namespace.vsize = vsize;
+                }
+                else if (namespace.type === 'redis')
+                {
+                    // For Redis, we can't get stats synchronously, so we'll keep existing values
+                    // or set defaults if they don't exist
+                    if (namespace.keys === undefined) namespace.keys = 0;
+                    if (namespace.ksize === undefined) namespace.ksize = 0;
+                    if (namespace.vsize === undefined) namespace.vsize = 0;
+                }
+            }
+            catch (error)
+            {
+                // If we can't get stats, keep existing values or set defaults
+                if (namespace.keys === undefined) namespace.keys = 0;
+                if (namespace.ksize === undefined) namespace.ksize = 0;
+                if (namespace.vsize === undefined) namespace.vsize = 0;
+            }
+
+            // Ensure hits and misses are initialized
+            if (namespace.hits === undefined) namespace.hits = 0;
+            if (namespace.misses === undefined) namespace.misses = 0;
+        }
+    }
+
+    /**
      * @function _cacheInit
      * @api private
      * @memberof mcode.cache
@@ -912,7 +1182,10 @@ class cache
 
         if (!this.#cache)
         {
-            this.#cache = new NodeCache({stdTTL: cache.CACHE_TTL});
+            this.#cache = new NodeCache({
+                stdTTL: cache.CACHE_TTL,
+                checkperiod: 0  // Disable automatic check period to prevent hanging timers
+            });
             _log.done(`mcode-cache initialized with TTL: ${cache.CACHE_TTL} 📣`, MODULE_NAME);
         }
     }
@@ -978,30 +1251,44 @@ class cache
     {
         try
         {
-            // if the cache is not enabled, just get the data from the callback
-            if (!this.#cacheEnabled)
+            // Extract namespace from cacheKey (format: "namespace:key")
+            const namespaceName = cacheKey.split(':')[0];
+            const namespaceInfo = this._getNamespaceInfo(namespaceName);
+
+            // if the namespace is not enabled or doesn't exist, just get the data from the callback
+            if (!namespaceInfo || !namespaceInfo.enabled)
             {
-                return cb();
+                // if no callback provided, return undefined
+                return cb ? await cb() : undefined;
             }
 
             let value = this.#cache.get(cacheKey);
 
-            if (!value)
+            if (value !== undefined)
             {
+                // Cache hit - increment hits counter
+                namespaceInfo.hits++;
+                return value;
+            }
+            else
+            {
+                // Cache miss - increment misses counter
+                namespaceInfo.misses++;
+
                 // if the key does not exist in cache, use the callback to get the actual data...
-                value = await cb();
+                value = cb ? await cb() : undefined;
 
                 // ...and then Set the key:value in the cache
                 await this.#cache.set(cacheKey, value);
-            }
 
-            return value;
+                return value;
+            }
         }
         catch (exp)
         {
             _log.exp(`Exception getting cached '${cacheKey}' key value in NODE cache.`, MODULE_NAME, exp);
 
-            return cb();  // get the actual data from the data-specific callback function
+            return cb ? await cb() : undefined;  // get the actual data from the data-specific callback function
         }
     }
 
@@ -1017,24 +1304,37 @@ class cache
     {
         try
         {
-            // if the cache is not enabled, just get the data from the callback
-            if (!this.#redisEnabled)
+            // Extract namespace from cacheKey (format: "namespace:key")
+            const namespaceName = cacheKey.split(':')[0];
+            const namespaceInfo = this._getNamespaceInfo(namespaceName);
+
+            // if the namespace is not enabled or doesn't exist, just get the data from the callback
+            if (!namespaceInfo || !namespaceInfo.enabled)
             {
                 return cb();
             }
 
-            let value = this.#redis.get(cacheKey);
+            let value = await this.#redis.get(cacheKey);
 
-            if (!value)
+            if (value !== null)
             {
+                // Cache hit - increment hits counter
+                namespaceInfo.hits++;
+                return value;
+            }
+            else
+            {
+                // Cache miss - increment misses counter
+                namespaceInfo.misses++;
+
                 // if the key does not exist in cache, use the callback to get the actual data...
                 value = await cb();
 
                 // ...and then Set the key:value in the cache
                 await this.#redis.set(cacheKey, value);
-            }
 
-            return value;
+                return value;
+            }
         }
         catch (exp)
         {
@@ -1055,8 +1355,12 @@ class cache
     {
         try
         {
-            // if the cache is not enabled, just return
-            if (!this.#cacheEnabled)
+            // Extract namespace from cacheKey (format: "namespace:key")
+            const namespaceName = cacheKey.split(':')[0];
+            const namespaceInfo = this._getNamespaceInfo(namespaceName);
+
+            // if the namespace is not enabled or doesn't exist, just return
+            if (!namespaceInfo || !namespaceInfo.enabled)
             {
                 return;
             }
@@ -1080,8 +1384,12 @@ class cache
     {
         try
         {
-            // if the cache is not enabled, just return
-            if (!this.#redisEnabled)
+            // Extract namespace from cacheKey (format: "namespace:key")
+            const namespaceName = cacheKey.split(':')[0];
+            const namespaceInfo = this._getNamespaceInfo(namespaceName);
+
+            // if the namespace is not enabled or doesn't exist, just return
+            if (!namespaceInfo || !namespaceInfo.enabled)
             {
                 return;
             }
@@ -1152,6 +1460,205 @@ class cache
             .replace(/\]/g, '\\]'); // Escape ]
 
         return new RegExp(`^${escapedPattern}$`); // Create a RegExp from the glob pattern
+    }
+
+    /**
+     * @func _listKeys
+     * @memberof mcode.cache
+     * @desc Common helper method to process cache keys and create the result objects with type and value preview.
+     * @param {Array} cacheKeys array of cache keys to process.
+     * @param {string} namespace the namespace these keys belong to.
+     * @param {string} cacheType the type of cache ('node' or 'redis').
+     * @returns {Array} array of processed key objects.
+     * @api private
+     */
+    async _listKeys(cacheKeys, namespace, cacheType)
+    {
+        const keyArray = [];
+
+        // Process each key individually to get proper type and value preview
+        for (const fullKey of cacheKeys)
+        {
+            try
+            {
+                // Add timeout protection for individual key retrieval
+                const getValuePromise = this._cacheGet(fullKey);
+                const keyValue = await this._withTimeout(getValuePromise, 3000, 'Key retrieval');
+                const {type, preview} = this._getTypeAndPreview(keyValue);
+
+                keyArray.push({
+                    namespace: namespace,
+                    key: fullKey.replace(`${namespace}:`, ''),
+                    cache: cacheType,
+                    type: type,
+                    preview: preview
+                });
+            }
+            catch (error)
+            {
+                // Handle case where key might not exist, be accessible, or timeout
+                keyArray.push({
+                    namespace: namespace,
+                    key: fullKey.replace(`${namespace}:`, ''),
+                    cache: cacheType,
+                    type: null,
+                    preview: error.message.includes('timeout') ?
+                        '&lt;Key retrieval timeout&gt;' :
+                        '&lt;Value is undefined in cache&gt;'
+                });
+            }
+        }
+
+        return keyArray;
+    }
+
+    /**
+     * @func _getTypeAndPreview
+     * @memberof mcode.cache
+     * @desc Determines the type and creates a preview for any JSON-compatible data type.
+     * For arrays and objects with JSON string representation < 128 bytes, returns the actual object
+     * to allow UI/UX code to handle display formatting. Otherwise returns HTML-escaped string.
+     * @param {any} value the value to analyze.
+     * @returns {object} object containing type and preview properties.
+     * @api private
+     */
+    _getTypeAndPreview(value)
+    {
+        // Handle null explicitly (typeof null === 'object')
+        if (value === null)
+        {
+            return {
+                type: 'null',
+                preview: null
+            };
+        }
+
+        // Handle undefined
+        if (value === undefined)
+        {
+            return {
+                type: 'undefined',
+                preview: undefined
+            };
+        }
+
+        const valueType = typeof value;
+
+        switch (valueType)
+        {
+            case 'string':
+                {
+                    const escapedString = this._escapeHtml(value);
+                    const preview = escapedString.length > 50
+                        ? escapedString.substring(0, 47) + '...'
+                        : escapedString;
+                    return {
+                        type: 'string',
+                        preview: preview
+                    };
+                }
+
+            case 'number':
+                return {
+                    type: Number.isInteger(value) ? 'integer' : 'number',
+                    preview: value
+                };
+
+            case 'boolean':
+                return {
+                    type: 'boolean',
+                    preview: value
+                };
+
+            case 'object':
+                {
+                    // Handle arrays - if small just return it as a preview
+                    if (Array.isArray(value))
+                    {
+                        const length = value.length;
+                        const jsonString = JSON.stringify(value);
+                        const jsonByteLength = Buffer.byteLength(jsonString, 'utf8');
+
+                        return {
+                            type: `array[${length}]`,
+                            preview: jsonByteLength < 128 ? value : this._escapeHtml(jsonString)
+                        };
+                    }
+
+                    // Handle objects - if small just return it as a preview
+                    const keyCount = Object.keys(value).length;
+                    const jsonString = JSON.stringify(value);
+                    const jsonByteLength = Buffer.byteLength(jsonString, 'utf8');
+
+                    return {
+                        type: `object[${keyCount}]`,
+                        preview: jsonByteLength < 128 ? value : this._escapeHtml(jsonString)
+                    };
+                }
+
+            case 'function':
+                {
+                    const funcStr = value.toString();
+                    const funcName = value.name || 'anonymous';
+                    let preview = `function ${funcName}()`;
+
+                    // Try to extract parameter list
+                    const paramMatch = funcStr.match(/function[^(]*\(([^)]*)\)/);
+                    if (paramMatch)
+                    {
+                        const params = paramMatch[1].trim();
+                        preview = params
+                            ? `function ${funcName}(${params})`
+                            : `function ${funcName}()`;
+                    }
+
+                    return {
+                        type: 'function',
+                        preview: this._escapeHtml(preview)
+                    };
+                }
+
+            case 'symbol':
+                return {
+                    type: 'symbol',
+                    preview: this._escapeHtml(value.toString())
+                };
+
+            case 'bigint':
+                return {
+                    type: 'bigint',
+                    preview: value
+                };
+
+            default:
+                // Fallback for any unknown types
+                return {
+                    type: valueType,
+                    preview: this._escapeHtml(String(value))
+                };
+        }
+    }
+
+    /**
+     * @func _escapeHtml
+     * @memberof mcode.cache
+     * @desc Escapes HTML characters to prevent rendering issues in web display.
+     * @param {string} text the text to escape.
+     * @returns {string} the escaped text.
+     * @api private
+     */
+    _escapeHtml(text)
+    {
+        const htmlEscapeMap = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#x27;',
+            '/': '&#x2F;'
+        };
+
+        return String(text).replace(/[&<>"'/]/g, (match) => htmlEscapeMap[match]);
     }
 
     // #endregion

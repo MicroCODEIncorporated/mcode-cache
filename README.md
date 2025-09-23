@@ -122,7 +122,16 @@ npm test
 
 - A view of the JEST tests in the console...
 
-<p align="left"><img src=".\.github\images\mcode-cache-jest.png" width="720" title="Jest Results..." border=1px></p>
+<p align="left"><img src=".\.github\images\mcode-cache-jest-1.png" width="720" title="Jest Results..." border=1px></p>
+
+<p align="left"><img src=".\.github\images\mcode-cache-jest-2.png" width="720" title="Jest Results..." border=1px></p>
+
+
+- A view of the JSON now returned for cacheNamespaces() and cacheListAll()...
+
+<p align="left"><img src=".\.github\images\mcode-cache-namespaces-json.png" width="720" title="Namespaces JSON..." border=1px></p>
+
+<p align="left"><img src=".\.github\images\mcode-cache-keys-json.png" width="720" title="Keys JSON..." border=1px></p>
 
 ## Included Functions
 
@@ -139,10 +148,10 @@ These are the functions we want at the ready in any module for development and d
 | **cacheDropAll** | Drops all keys from a namespace in the Cache, defaults to current.        | count = mcode.cacheDropAll({cache: 'redis', namespace: 'GM-GPS-eMITS-DB', pattern: '\*'}) |
 | **cacheListAll** | Lists all keys from a namespace in the Cache, defaults to current.        | array = mcode.cacheListAll({cache: 'node', namespace: '_', pattern: '_'})                 |
 | **cacheMakeKey** | Generates a well formatted Cache Key form a resource key.                 | key = mcode.cacheMakeKey(key)                                                             |
-| **cacheOn**      | Turns the caching of Node data ON. (The default state).                   | void mcode.cacheOn()                                                                      |
-| **cacheOff**     | Turns the caching of Node data OFF. (For active development).             | void mcode.cacheOff()                                                                     |
-| **redisOn**      | Turns the caching of Redis data ON. (The default state).                  | void mcode.redisOn()                                                                      |
-| **redisOff**     | Turns the caching of Redis data OFF. (For active development).            | void mcode.redisOff()                                                                     |
+| **cacheOn**      | Turns the caching of Node data ON. (The default state).                   | void mcode.cacheOn(cacheName)                                                                      |
+| **cacheOff**     | Turns the caching of Node data OFF. (For active development).             | void mcode.cacheOff(cacheName)                                                                     |
+| **redisOn**      | Turns the caching of Redis data ON. (The default state).                  | DEPRECATED in v0.8.0                                                                    |
+| **redisOff**     | Turns the caching of Redis data OFF. (For active development).            | DEPRECATED in v0.8.0                                                                       |
 | **cacheClose**   | Closes the Node and Redis caches, and the connection to the Redis Server. | void mcode.cacheClose(path)                                                               |
 |                  |                                                                           |
 | File Specific    | These directly replace "fs" file operations                               |                                                                                           |
@@ -158,13 +167,13 @@ These are the properties for interacting with the mcode-cache instance.
 
 | Property            | Description                                                               | Usage                                           |
 | ------------------- | ------------------------------------------------------------------------- | ----------------------------------------------- |
-| **cacheNamespaces** | The active namespaces and there types (Node or Redis).                    | const namespaces = await mcode.cacheNamespaces; |
+| **cacheNamespaces** | The active namespaces and their types (Node or Redis).                    | const namespaces = await mcode.cacheNamespaces; |
 | **cacheReady**      | The Cache is ready for use, Redis online, Namespace is established.       | if (mcode.cacheReady)                           |
 | **cacheTTL**        | The current Time-To-Live, the expiration in milliseconds of current tags. | mcode.cacheTTL = 30000                          |
 | **redisURL**        | The network address of the Redis Server, 'redis://<ip>:<port>.            | mcode.redisURL = 'redis://127.0.0.1:6379'       |
 | **cacheNamespace**  | The namespace for all tags until changed, defaults to 'MicroCODE'.        | mcode.cacheNamespace = 'MyAppName'              |
-| **cacheEnabled**    | The current state of Node namespace caching, True = Caching is ON.        | if (mcode.cacheEnabled)                         |
-| **redisEnabled**    | The current state of Redis namespace caching, True = Caching is ON.       | if (mcode.redisEnabled)                         |
+| **cacheEnabled**    | The current state of Node namespace caching, True = Caching is ON.        | if (mcode.cacheEnabled(cacheName))                         |
+| **redisEnabled**    | The current state of Redis namespace caching, True = Caching is ON.       | DEPRECATED in v0.8.0                         |
 
 <p>&nbsp;</p>
 
@@ -227,6 +236,13 @@ Contributor's names and contact info...
 - Timothy McGuire [@TimothyMcGuire](https://twitter.com/TimothyMcGuire) - Founder, President-CEO of MicroCODE, Inc. a software and controls engineering company in Detroit, Michigan USA.
 
 ## Version History
+
+- 0.8.0
+  - NOTE: This is a BREAKING CHANGE, several functions now require parameters for distinguishing which cache is being referenced.
+  - Updated 'cacheNamespaces' and 'cacheListAll' to include more detailed type and stats information and return proper JSON structure.
+  - This record structure is different from previous versions.
+  - REDIS is just treated as a common CACHE type now without specific API Endpoints.
+  - Add 20+ Test cases for the new and updated functions.
 
 - v0.7.1
   - Moved to \_<mcode-package> naming for all internal use of our packages from within another package.
