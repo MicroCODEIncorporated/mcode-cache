@@ -1,6 +1,6 @@
 {
   "name": "mcode-cache",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Namespaced Node.js and Redis caching with typed values, transactions, geo, sorted sets, and pub/sub.",
   "main": "index.js",
   "files": [

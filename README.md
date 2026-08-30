@@ -616,6 +616,15 @@ Contributor's names and contact info...
 
 ## Version History
 
+<!-- {AIN-2026-08-26:GPT-5.6 Sol} -- reset must close scoped work until cache is ready -->
+
+- v0.9.1
+    - Serializes namespace resets, waits for active operations, and holds new
+      scoped cache, transaction, pub/sub, and subscriber work until completion.
+    - Prevents access statistics from being recreated during reset and makes
+      guard-release failures reject instead of reporting false success.
+    - Adds reset contention, failure recovery, and cleanup coverage; 52 tests
+      pass against Redis 8.6.1.
 - v0.9.0
     - Added immutable node and Redis namespace handles.
     - Added strict typed values with native Redis 8.4 `IFEQ` and `DELEX IFEQ`

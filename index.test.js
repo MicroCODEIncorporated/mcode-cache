@@ -23,6 +23,17 @@ const getFreePort = () => new Promise((resolve, reject) =>
     });
 });
 
+// {AIN-2026-08-26:GPT-5.6 Sol} -- singleton test fixtures must not tax later statistics
+const removeTestNamespace = name =>
+{
+    const namespaces = cache.cacheNamespaces;
+    const index = namespaces.findIndex(namespace => namespace.name === name);
+    if (index >= 0)
+    {
+        namespaces.splice(index, 1);
+    }
+};
+
 /*
  * ENHANCED TEST SUITE FOR MCODE-CACHE
  *
@@ -322,13 +333,60 @@ describe('mcode-cache: namespace statistics', () =>
         mcode.info('refreshCacheStatistics method working correctly', MODULE_NAME);
     });
 
+    // {AIN-2026-08-26:GPT-5.6 Sol} -- unit proof must not depend on a private cache method
     it('returns unavailable Redis outcomes and clears stale statistics', async () =>
     {
+        class StatisticsFailureClient extends EventEmitter
+        {
+            constructor()
+            {
+                super();
+                this.isOpen = false;
+                this.isReady = false;
+                this.scan = jest.fn().mockRejectedValue(new Error('NOPERM SCAN denied'));
+            }
+
+            async connect()
+            {
+                this.isOpen = true;
+                this.isReady = true;
+                return this;
+            }
+
+            async ping()
+            {
+                return 'PONG';
+            }
+
+            async info(section)
+            {
+                return section === 'server' ? 'redis_version:8.6.1\r\n' : 'cluster_enabled:0\r\n';
+            }
+
+            async sendCommand()
+            {
+                return [['delex']];
+            }
+
+            async close()
+            {
+                this.isOpen = false;
+                this.isReady = false;
+            }
+
+            destroy()
+            {
+                this.isOpen = false;
+                this.isReady = false;
+            }
+        }
+
         const name = 'issue0149-stats-fail';
-        cache.addNamespace({
+        const client = new StatisticsFailureClient();
+        const redisHandle = cache.addNamespace({
             name,
             type: 'redis',
-            url: 'redis://127.0.0.1:1',
+            url: 'redis://adapter.invalid:6379',
             username: null,
             password: null,
             retry: {
@@ -338,23 +396,28 @@ describe('mcode-cache: namespace statistics', () =>
             },
             readyTimeoutMs: 50,
             commandTimeoutMs: 50,
-            disableOfflineQueue: true
+            disableOfflineQueue: true,
+            clientFactory: () => client
         });
-        const namespace = cache.cacheNamespaces.find(item => item.name === name);
-        namespace.keys = 9;
-        namespace.ksize = 90;
-        namespace.vsize = 900;
-
-        const original = cache._legacyRedisScanKeys.bind(cache);
-        cache._legacyRedisScanKeys = async () =>
-        {
-            throw new Error('MEMORY denied');
-        };
+        await redisHandle.ready();
+        expect(redisHandle.status).toBe(cache.redisStatus.CONNECTED);
 
         try
         {
+            const nodeHandle = cache.addNamespace({name: 'issue0149-stats-node', type: 'node'});
+            await nodeHandle.cacheSet('present', 'value');
+            const namespace = cache.cacheNamespaces.find(item => item.name === name);
+            namespace.keys = 9;
+            namespace.ksize = 90;
+            namespace.vsize = 900;
+            namespace.hits = 4;
+            namespace.misses = 5;
+
             const outcomes = await cache.refreshCacheStatistics();
             const redisOutcome = outcomes.find(item => item.name === name);
+            const nodeOutcome = outcomes.find(item => item.name === nodeHandle.name);
+
+            expect(client.scan).toHaveBeenCalled();
             expect(redisOutcome.status).toBe('unavailable');
             expect(redisOutcome.error_code).toBe('CACHE_STATS_UNAVAILABLE');
             expect(namespace.keys).toBeNull();
@@ -362,10 +425,14 @@ describe('mcode-cache: namespace statistics', () =>
             expect(namespace.vsize).toBeNull();
             expect(namespace.hits).toBeNull();
             expect(namespace.misses).toBeNull();
+            expect(nodeOutcome.status).toBe('refreshed');
+            expect(nodeOutcome.error_code).toBeNull();
         }
         finally
         {
-            cache._legacyRedisScanKeys = original;
+            // {AIN-2026-08-26:GPT-5.6 Sol} -- failed fixture cannot delay later global refreshes
+            await redisHandle.close();
+            removeTestNamespace(name);
         }
     });
 
@@ -397,9 +464,18 @@ describe('mcode-cache: namespace statistics', () =>
             clientFactory: () => client
         });
 
-        await expect(handle.ready({timeoutMs: 50})).rejects.toThrow();
-        expect(client.disconnect).toHaveBeenCalled();
-        expect(client.removeAllListeners).toHaveBeenCalled();
+        try
+        {
+            await expect(handle.ready({timeoutMs: 50})).rejects.toThrow();
+            expect(client.disconnect).toHaveBeenCalled();
+            expect(client.removeAllListeners).toHaveBeenCalled();
+        }
+        finally
+        {
+            // {AIN-2026-08-26:GPT-5.6 Sol} -- refused fixture cannot delay later global refreshes
+            await handle.close();
+            removeTestNamespace(handle.name);
+        }
     });
 
     it('should return actual objects for small arrays/objects in cacheListAll preview', async () =>
@@ -990,11 +1066,19 @@ describe('mcode-cache: scoped namespace contract', () =>
             clientFactory: () => new DelayedClient()
         });
         await delayed.ready();
-        await expect(delayed.cacheSet('mutation', 'value', {noExpiry: true}))
-            .rejects.toMatchObject({code: 'CACHE_OUTCOME_UNKNOWN'});
-        await new Promise(resolve => setTimeout(resolve, 50));
-        expect(setCalls).toBe(1);
-        await delayed.close();
+        try
+        {
+            await expect(delayed.cacheSet('mutation', 'value', {noExpiry: true}))
+                .rejects.toMatchObject({code: 'CACHE_OUTCOME_UNKNOWN'});
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(setCalls).toBe(1);
+        }
+        finally
+        {
+            // {AIN-2026-08-26:GPT-5.6 Sol} -- timed-out fixture cannot delay later global refreshes
+            await delayed.close();
+            removeTestNamespace(delayed.name);
+        }
     });
 });
 
@@ -1018,6 +1102,21 @@ describe('mcode-cache: redis integration', () =>
         readyTimeoutMs: 10000,
         commandTimeoutMs: 5000,
         disableOfflineQueue: true
+    });
+
+    // {AIN-2026-08-26:GPT-5.6 Sol} -- reset races need deterministic public-handle command seams
+    const resetOptions = (generation, token, maxKeys = 1000) => ({
+        markerKey: 'generation:marker',
+        generation,
+        guardKey: 'generation:guard',
+        guardToken: token,
+        guardTtlMilliseconds: 30000,
+        deadlineMs: 20000,
+        scanCount: 100,
+        maxKeys,
+        maxRetries: 2,
+        acquireGuard: true,
+        releaseGuard: true
     });
 
     // {AIN-2026-08-26:GPT-5.6 Sol} -- legacy completeness needs efficient boundary fixtures
@@ -1115,9 +1214,17 @@ describe('mcode-cache: redis integration', () =>
             retry: {baseDelayMs: 10, maxDelayMs: 20, maxAttempts: 1},
             readyTimeoutMs: 500
         });
-        await expect(unavailable.ready({timeoutMs: 1000})).rejects.toBeDefined();
-        expect(unavailable.status).toBe(cache.redisStatus.DISCONNECTED);
-        await unavailable.close();
+        try
+        {
+            await expect(unavailable.ready({timeoutMs: 1000})).rejects.toBeDefined();
+            expect(unavailable.status).toBe(cache.redisStatus.DISCONNECTED);
+        }
+        finally
+        {
+            // {AIN-2026-08-26:GPT-5.6 Sol} -- unavailable fixture cannot delay later global refreshes
+            await unavailable.close();
+            removeTestNamespace(unavailable.name);
+        }
 
         const oldContainer = await new GenericContainer('redis:7.4.2-alpine')
             .withExposedPorts(6379)
@@ -1137,7 +1244,9 @@ describe('mcode-cache: redis integration', () =>
         }
         finally
         {
+            // {AIN-2026-08-26:GPT-5.6 Sol} -- rejected-version fixture cannot delay later global refreshes
             await oldHandle.close();
+            removeTestNamespace(oldHandle.name);
             await oldContainer.stop();
         }
     }, 150000);
@@ -1515,10 +1624,104 @@ describe('mcode-cache: redis integration', () =>
             releaseGuard: true,
             force: true
         });
-        expect(forced).toEqual({changed: true, generation: 'generation-2', deleted: 1});
+        // {AIN-2026-08-26:GPT-5.6 Sol} -- generation check leaves shared access state for reset
+        expect(forced).toEqual({changed: true, generation: 'generation-2', deleted: 2});
+        expect((await redisHandle.scan({pattern: 'ops:access', count: 100})).keys).toEqual([]);
         expect(await redisHandle.cacheGet('reset:force')).toBeUndefined();
         expect(await other.cacheGet('preserved')).toBe('yes');
         await other.close();
+    });
+
+    // {AIN-2026-08-26:GPT-5.6 Sol} -- local reset admission must close every race and reopen on failure
+    it('gates scoped operations through successful and failed generation resets', async () =>
+    {
+        const Redis = require('redis');
+        const state = {duplicates: [], wait: null, failRelease: false, scanned: false};
+        const name = 'RedisResetGate';
+        const gated = cache.addNamespace({
+            ...config(name),
+            clientFactory: options =>
+            {
+                const client = Redis.createClient(options);
+                state.client = client;
+                const replace = (method, replacement) =>
+                {
+                    const original = client[method].bind(client);
+                    client[method] = (...args) => replacement(original, args);
+                };
+                replace('set', async (set, args) =>
+                {
+                    if (state.wait && args[0] === `${name}:active`)
+                    {
+                        state.start();
+                        await state.wait;
+                    }
+                    return set(...args);
+                });
+                replace('scan', (scan, args) =>
+                {
+                    state.scanned = true;
+                    return scan(...args);
+                });
+                replace('delEx', (delEx, args) =>
+                {
+                    if (state.failRelease)
+                    {
+                        state.failRelease = false;
+                        throw new Error('guard release denied');
+                    }
+                    return delEx(...args);
+                });
+                replace('duplicate', duplicate =>
+                {
+                    const copy = duplicate();
+                    state.duplicates.push(copy);
+                    return copy;
+                });
+                return client;
+            }
+        });
+        await gated.ready();
+        try
+        {
+            let release;
+            const started = new Promise(resolve => state.start = resolve);
+            state.wait = new Promise(resolve => release = resolve);
+            const active = gated.cacheSet('active', 'value', {noExpiry: true});
+            await started;
+            const reset = gated.resetGeneration(resetOptions('gate-1', 'owner-1'));
+            let blockedDone = false;
+            const blocked = gated.cacheGet('blocked').finally(() => blockedDone = true);
+            const subscriber = gated.createSubscriber({timeoutMs: 5000});
+            await Promise.resolve();
+            expect(state.scanned).toBe(false);
+
+            release();
+            await active;
+            await expect(reset).resolves.toMatchObject({changed: true});
+            expect(blockedDone).toBe(false);
+            expect(await state.client.exists(`${name}:ops:access`)).toBe(0);
+            await blocked;
+            await (await subscriber).close();
+
+            await gated.cacheSet('one', 1, {noExpiry: true});
+            await gated.cacheSet('two', 2, {noExpiry: true});
+            const failed = gated.resetGeneration(resetOptions('gate-2', 'owner-2', 1));
+            await expect(failed).rejects.toMatchObject({code: 'CACHE_GENERATION_LIMIT'});
+            await expect(gated.cacheSet('reopened', true, {noExpiry: true})).resolves.toBe(true);
+
+            state.failRelease = true;
+            await expect(gated.resetGeneration(resetOptions('gate-3', 'owner-3')))
+                .rejects.toMatchObject({code: 'CACHE_GENERATION_GUARD'});
+            await expect(gated.cacheSet('release-reopened', true, {noExpiry: true})).resolves.toBe(true);
+            await state.client.del(`${name}:generation:guard`);
+            expect(state.duplicates.every(client => !client.isOpen)).toBe(true);
+        }
+        finally
+        {
+            await gated.close();
+            removeTestNamespace(name);
+        }
     });
 
     it('coexists with Bull 4 without exposing Bull or ioredis APIs', async () =>

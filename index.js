@@ -231,6 +231,9 @@ class cache
     #redisContexts = new Map();
     #namespaceHandles = new Map();
     #multiOperations = new WeakMap();
+    // {AIN-2026-08-26:GPT-5.6 Sol} -- reset cannot overlap active or newly admitted scoped work
+    #namespaceOperations = new Map();
+    #resettingNamespaces = new Map();
 
     // #endregion
 
@@ -1527,6 +1530,42 @@ class cache
 
         const namespace = this._getNamespaceInfo(name);
         const owner = this;
+        // {AIN-2026-08-26:GPT-5.6 Sol} -- reset isolation belongs to each immutable namespace handle
+        const run = async operation =>
+        {
+            while (owner.#resettingNamespaces.has(name))
+            {
+                await owner.#resettingNamespaces.get(name);
+            }
+            const task = Promise.resolve().then(operation);
+            const active = owner.#namespaceOperations.get(name) || new Set();
+            active.add(task);
+            owner.#namespaceOperations.set(name, active);
+            try
+            {
+                return await task;
+            }
+            finally
+            {
+                active.delete(task);
+                if (!active.size)
+                {
+                    owner.#namespaceOperations.delete(name);
+                }
+            }
+        };
+        const reset = operation =>
+        {
+            const previous = owner.#resettingNamespaces.get(name);
+            const task = Promise.resolve(previous)
+                .then(() => Promise.allSettled(owner.#namespaceOperations.get(name) || []))
+                .then(() => operation());
+            const barrier = task.then(() => undefined, () => undefined);
+            owner.#resettingNamespaces.set(name, barrier);
+            barrier.then(() => owner.#resettingNamespaces.get(name) === barrier &&
+                owner.#resettingNamespaces.delete(name));
+            return task;
+        };
         const handle = {
             name,
             type: namespace.type,
@@ -1543,38 +1582,42 @@ class cache
                 return owner.#redisContexts.get(name)?.status || cache.REDIS_STATUS.NOT_CONFIGURED;
             },
             ready: options => owner._namespaceReady(name, options),
-            cacheGet: key => owner._namespaceCacheGet(name, key),
-            cacheGetMany: keys => owner._namespaceCacheGetMany(name, keys),
-            cacheSet: (key, value, options) => owner._namespaceCacheSet(name, key, value, options),
-            cacheDrop: keyOrKeys => owner._namespaceCacheDrop(name, keyOrKeys),
-            cacheDropIfEqual: (key, expectedValue) => owner._namespaceCacheDropIfEqual(name, key, expectedValue),
-            cacheExists: key => owner._namespaceCacheExists(name, key),
-            cacheTTL: key => owner._namespaceCacheTTL(name, key, false),
-            cachePTTL: key => owner._namespaceCacheTTL(name, key, true),
-            cacheExpire: (key, options) => owner._namespaceCacheExpire(name, key, options),
+            cacheGet: key => run(() => owner._namespaceCacheGet(name, key)),
+            cacheGetMany: keys => run(() => owner._namespaceCacheGetMany(name, keys)),
+            cacheSet: (key, value, options) => run(() => owner._namespaceCacheSet(name, key, value, options)),
+            cacheDrop: keyOrKeys => run(() => owner._namespaceCacheDrop(name, keyOrKeys)),
+            cacheDropIfEqual: (key, value) => run(() => owner._namespaceCacheDropIfEqual(name, key, value)),
+            cacheExists: key => run(() => owner._namespaceCacheExists(name, key)),
+            cacheTTL: key => run(() => owner._namespaceCacheTTL(name, key, false)),
+            cachePTTL: key => run(() => owner._namespaceCacheTTL(name, key, true)),
+            cacheExpire: (key, options) => run(() => owner._namespaceCacheExpire(name, key, options)),
             ping: () => owner._namespacePing(name),
             info: section => owner._namespaceInfo(name, section),
             time: () => owner._namespaceTime(name),
-            scan: options => owner._namespaceScan(name, options),
-            inspect: options => owner._namespaceInspect(name, options),
-            geoAdd: (key, members) => owner._namespaceGeoAdd(name, key, members),
-            geoRemove: (key, members) => owner._namespaceGeoRemove(name, key, members),
-            geoSearch: (key, options) => owner._namespaceGeoSearch(name, key, options),
-            sortedSetAdd: (key, members, options) => owner._namespaceSortedSetAdd(name, key, members, options),
-            sortedSetRemove: (key, members) => owner._namespaceSortedSetRemove(name, key, members),
+            scan: options => run(() => owner._namespaceScan(name, options)),
+            inspect: options => run(() => owner._namespaceInspect(name, options)),
+            geoAdd: (key, members) => run(() => owner._namespaceGeoAdd(name, key, members)),
+            geoRemove: (key, members) => run(() => owner._namespaceGeoRemove(name, key, members)),
+            geoSearch: (key, options) => run(() => owner._namespaceGeoSearch(name, key, options)),
+            sortedSetAdd: (key, members, options) =>
+                run(() => owner._namespaceSortedSetAdd(name, key, members, options)),
+            sortedSetRemove: (key, members) => run(() => owner._namespaceSortedSetRemove(name, key, members)),
             // {AIN-2026-08-26:GPT-5.6 Sol} -- viewport expiry needs the documented bounded score APIs
-            sortedSetRemoveByScore: (key, options) => owner._namespaceSortedSetRemoveByScore(name, key, options),
-            sortedSetCount: (key, options) => owner._namespaceSortedSetCount(name, key, options),
-            sortedSetRange: (key, options) => owner._namespaceSortedSetRange(name, key, options),
-            sortedSetRangeByScore: (key, options) => owner._namespaceSortedSetRangeByScore(name, key, options),
-            sortedSetRank: (key, member, reverse) => owner._namespaceSortedSetRank(name, key, member, reverse),
-            sortedSetScore: (key, member) => owner._namespaceSortedSetScore(name, key, member),
-            multi: () => owner._createMultiBuilder(name),
-            watchTransaction: (options, planner) => owner._watchTransaction(name, options, planner),
-            ensureGeneration: options => owner._ensureGeneration(name, options),
-            resetGeneration: options => owner._resetGeneration(name, options),
-            publish: (channel, value) => owner._namespacePublish(name, channel, value),
-            createSubscriber: options => owner._createSubscriber(name, options),
+            sortedSetRemoveByScore: (key, options) =>
+                run(() => owner._namespaceSortedSetRemoveByScore(name, key, options)),
+            sortedSetCount: (key, options) => run(() => owner._namespaceSortedSetCount(name, key, options)),
+            sortedSetRange: (key, options) => run(() => owner._namespaceSortedSetRange(name, key, options)),
+            sortedSetRangeByScore: (key, options) =>
+                run(() => owner._namespaceSortedSetRangeByScore(name, key, options)),
+            sortedSetRank: (key, member, reverse) =>
+                run(() => owner._namespaceSortedSetRank(name, key, member, reverse)),
+            sortedSetScore: (key, member) => run(() => owner._namespaceSortedSetScore(name, key, member)),
+            multi: () => owner._createMultiBuilder(name, null, false, run),
+            watchTransaction: (options, planner) => run(() => owner._watchTransaction(name, options, planner)),
+            ensureGeneration: options => run(() => owner._ensureGeneration(name, options)),
+            resetGeneration: options => reset(() => owner._resetGeneration(name, options)),
+            publish: (channel, value) => run(() => owner._namespacePublish(name, channel, value)),
+            createSubscriber: options => run(() => owner._createSubscriber(name, options)),
             close: () => owner._closeRedisNamespace(name)
         };
 
@@ -2130,6 +2173,7 @@ class cache
 
     // #region  S C O P E D   V A L U E   A N D   I N S P E C T I O N
 
+    // {ISSUE#0149:Grok-4.6} -- process-local hits hid every other consumer
     /**
      * @function _recordAccess
      * @memberof mcode.cache
@@ -2140,7 +2184,6 @@ class cache
      * @returns {Promise<void>}
      * @api private
      */
-    // {ISSUE#0149:Grok-4.6} -- process-local hits hid every other consumer
     async _recordAccess(name, key, found)
     {
         if (key === cache.ACCESS_STATS_KEY)
@@ -2194,7 +2237,8 @@ class cache
      */
     async _persistAccessCounts(name, hits, misses)
     {
-        if (!hits && !misses)
+        // {AIN-2026-08-26:GPT-5.6 Sol} -- reset verification must not recreate cache state
+        if (this.#resettingNamespaces.has(name) || (!hits && !misses))
         {
             return;
         }
@@ -3263,10 +3307,11 @@ class cache
      * @param {string} name the Redis namespace name.
      * @param {object} client the optional exclusive Redis client.
      * @param {boolean} deferred whether WATCH owns transaction execution.
+     * @param {function} run the optional scoped operation gate.
      * @returns {object} the frozen typed transaction builder.
      * @api private
      */
-    _createMultiBuilder(name, client = null, deferred = false)
+    _createMultiBuilder(name, client = null, deferred = false, run)
     {
         const namespace = this._getNamespaceInfo(name);
         if (!namespace || namespace.type !== 'redis')
@@ -3307,7 +3352,10 @@ class cache
                         'WATCH transaction planners must return the builder; they cannot execute it directly.');
                 }
                 executed = true;
-                return this._executeMultiOperations(name, operations, client);
+                // {AIN-2026-08-26:GPT-5.6 Sol} -- queued transactions mutate only after reset admission
+                return run ?
+                    run(() => this._executeMultiOperations(name, operations, client)) :
+                    this._executeMultiOperations(name, operations, client);
             }
         };
         Object.freeze(builder);
@@ -3835,8 +3883,12 @@ class cache
         {
             if (options.releaseGuard)
             {
-                await this._namespaceCacheDropIfEqual(name, options.guardKey, options.guardToken)
-                    .catch(error => _log.warn(`Failed to release generation guard: ${error.message}`, MODULE_NAME));
+                await this._namespaceCacheDropIfEqual(name, options.guardKey, options.guardToken).catch(error =>
+                {
+                    // {AIN-2026-08-26:GPT-5.6 Sol} -- retained guards make reset success false
+                    throw this._cacheError('CACHE_GENERATION_GUARD',
+                        'Generation reset guard release failed.', error);
+                });
             }
         }
     }
