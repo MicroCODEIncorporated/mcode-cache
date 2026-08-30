@@ -5,9 +5,15 @@ const mcode = require('mcode-log');
 const fs = require('fs').promises;
 
 
+/**
+ * @function testCache
+ * @memberof examples
+ * @desc Demonstrates file caching and immutable scoped node-cache handles.
+ * @returns {Promise<void>}
+ */
 async function testCache()
 {
-    // 0) dump from Cache if already there..
+    // 0) remove the file from Cache if already there...
     const count = await cache.fileDrop('./example.htmx');
 
     mcode.log(`Dropped ${count} keys from Cache...`, MODULE_NAME);
@@ -36,23 +42,30 @@ async function testCache()
 
     mcode.log(`All file reads match: ${filesMatch}`, MODULE_NAME);
 
-    // 6) create a custome key:value in Cache...
-    const key = "myKey";
-    const value = "myValue";
-    cache.cacheSet(key, value);
+    // 6) create an immutable scoped namespace handle for new code...
+    const exampleCache = cache.addNamespace({
+        name: 'Example',
+        type: 'node'
+    });
 
-    // 7) read the custom key:value from Cache...
-    const cacheValue = await cache.cacheGet(key, () => {return "myDefaultValue";});
+    // 7) write and read a typed value without changing cache.cacheNamespace...
+    await exampleCache.cacheSet('myKey', {
+        value: 'myValue',
+        cached: true
+    }, {
+        noExpiry: true
+    });
+    const cacheValue = await exampleCache.cacheGet('myKey');
 
-    mcode.log(`Cached custom key:value and read from Cache... ${key}:${cacheValue}`, MODULE_NAME);
+    mcode.log({cacheValue}, MODULE_NAME);
+
+    // 8) close all package-owned resources during application shutdown...
+    await cache.closeNamespace();
 }
 
-// run the tests
-testCache();
-
-// exit the process after the tests are done...
-setTimeout(() =>
+// Run the examples and report an actionable failure without forcing process exit.
+testCache().catch(error =>
 {
-    process.exit(0);
-
-}, 2000);
+    mcode.exp('mcode-cache examples failed.', MODULE_NAME, error);
+    process.exitCode = 1;
+});

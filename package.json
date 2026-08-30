@@ -1,10 +1,31 @@
 {
   "name": "mcode-cache",
-  "version": "0.8.1",
-  "description": "Our Data Caching functions. These support files, JSON, JS Objects, any primitive, etc. And provide common keying support.",
+  "version": "0.9.0",
+  "description": "Namespaced Node.js and Redis caching with typed values, transactions, geo, sorted sets, and pub/sub.",
   "main": "index.js",
+  "files": [
+    "index.js",
+    "README.md",
+    "LICENSE",
+    "examples.js",
+    "docs/index.html",
+    "docs/index.js.html",
+    "docs/mcode.cache.html",
+    "docs/mcode.module__mcode-cache.js_-mcode.html",
+    "docs/mcode.module__mcode-cache.js_.html",
+    "docs/fonts/",
+    "docs/scripts/",
+    "docs/styles/"
+  ],
+  "engines": {
+    "node": ">=22.14.0"
+  },
   "scripts": {
-    "test": "jest"
+    "test": "jest --runInBand",
+    "test:unit": "jest --runInBand --testNamePattern=\"^(?!.*redis integration).*\"",
+    "test:redis": "jest --runInBand --testNamePattern=\"redis integration\"",
+    "test:artifact": "jest --runInBand --testNamePattern=\"package artifact\"",
+    "docs": "jsdoc index.js -d docs"
   },
   "repository": {
     "type": "git",
@@ -31,9 +52,23 @@
   },
   "homepage": "https://github.com/MicroCODEIncorporated/mcode-cache#readme",
   "dependencies": {
-    "mcode-data": "^0.6.4",
-    "mcode-log": "^0.8.0",
+    "mcode-log": "^0.8.5",
     "node-cache": "^5.1.2",
-    "redis": "^4.7.0"
+    "redis": "^6.2.1"
+  },
+  "devDependencies": {
+    "bull": "^4.16.5",
+    "jest": "^30.4.2",
+    "jsdoc": "^4.0.5",
+    "prettier": "^3.9.6",
+    "testcontainers": "^11.14.0"
+  },
+  "overrides": {
+    "bull": {
+      "uuid": "^11.1.1"
+    },
+    "dockerode": {
+      "uuid": "^11.1.1"
+    }
   }
 }

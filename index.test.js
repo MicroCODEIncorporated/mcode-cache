@@ -2,7 +2,26 @@
 const MODULE_NAME = 'index.test.js';
 const cache = require('./index.js');
 const mcode = require('mcode-log');
+const Bull = require('bull');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const {execFileSync} = require('child_process');
+const {EventEmitter} = require('events');
+const net = require('net');
+const {GenericContainer, Wait} = require('testcontainers');
 const testFile = './index.js';
+
+const getFreePort = () => new Promise((resolve, reject) =>
+{
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () =>
+    {
+        const port = server.address().port;
+        server.close(error => error ? reject(error) : resolve(port));
+    });
+});
 
 /*
  * ENHANCED TEST SUITE FOR MCODE-CACHE
@@ -284,11 +303,12 @@ describe('mcode-cache: namespace statistics', () =>
     it('should support refreshCacheStatistics for async statistics updates', async () =>
     {
         // Call the refresh method (should work even for node cache namespaces)
-        await cache.refreshCacheStatistics();
+        const outcomes = await cache.refreshCacheStatistics();
 
         // Verify statistics are still available and consistent
         const stats = cache.cacheNamespaces;
         const testNamespace = stats.find(ns => ns.name === 'TestStats');
+        const nodeOutcome = outcomes.find(item => item.name === 'TestStats');
 
         expect(testNamespace).toBeDefined();
         expect(typeof testNamespace.keys).toBe('number');
@@ -296,8 +316,90 @@ describe('mcode-cache: namespace statistics', () =>
         expect(typeof testNamespace.vsize).toBe('number');
         expect(typeof testNamespace.hits).toBe('number');
         expect(typeof testNamespace.misses).toBe('number');
+        expect(nodeOutcome.status).toBe('refreshed');
+        expect(nodeOutcome.error_code).toBeNull();
 
         mcode.info('refreshCacheStatistics method working correctly', MODULE_NAME);
+    });
+
+    it('returns unavailable Redis outcomes and clears stale statistics', async () =>
+    {
+        const name = 'issue0149-stats-fail';
+        cache.addNamespace({
+            name,
+            type: 'redis',
+            url: 'redis://127.0.0.1:1',
+            username: null,
+            password: null,
+            retry: {
+                maxAttempts: 1,
+                baseDelayMs: 10,
+                maxDelayMs: 10
+            },
+            readyTimeoutMs: 50,
+            commandTimeoutMs: 50,
+            disableOfflineQueue: true
+        });
+        const namespace = cache.cacheNamespaces.find(item => item.name === name);
+        namespace.keys = 9;
+        namespace.ksize = 90;
+        namespace.vsize = 900;
+
+        const original = cache._legacyRedisScanKeys.bind(cache);
+        cache._legacyRedisScanKeys = async () =>
+        {
+            throw new Error('MEMORY denied');
+        };
+
+        try
+        {
+            const outcomes = await cache.refreshCacheStatistics();
+            const redisOutcome = outcomes.find(item => item.name === name);
+            expect(redisOutcome.status).toBe('unavailable');
+            expect(redisOutcome.error_code).toBe('CACHE_STATS_UNAVAILABLE');
+            expect(namespace.keys).toBeNull();
+            expect(namespace.ksize).toBeNull();
+            expect(namespace.vsize).toBeNull();
+            expect(namespace.hits).toBeNull();
+            expect(namespace.misses).toBeNull();
+        }
+        finally
+        {
+            cache._legacyRedisScanKeys = original;
+        }
+    });
+
+    it('does not throw when a refused Redis client has no destroy()', async () =>
+    {
+        const client = {
+            isOpen: true,
+            isReady: false,
+            connect: jest.fn().mockRejectedValue(new Error('connect ECONNREFUSED')),
+            disconnect: jest.fn().mockResolvedValue(undefined),
+            ping: jest.fn().mockRejectedValue(new Error('connect ECONNREFUSED')),
+            on: jest.fn(),
+            removeAllListeners: jest.fn()
+        };
+        const handle = cache.addNamespace({
+            name: 'issue0149-destroy-v4',
+            type: 'redis',
+            url: 'redis://127.0.0.1:1',
+            username: null,
+            password: null,
+            retry: {
+                maxAttempts: 1,
+                baseDelayMs: 10,
+                maxDelayMs: 10
+            },
+            readyTimeoutMs: 50,
+            commandTimeoutMs: 50,
+            disableOfflineQueue: true,
+            clientFactory: () => client
+        });
+
+        await expect(handle.ready({timeoutMs: 50})).rejects.toThrow();
+        expect(client.disconnect).toHaveBeenCalled();
+        expect(client.removeAllListeners).toHaveBeenCalled();
     });
 
     it('should return actual objects for small arrays/objects in cacheListAll preview', async () =>
@@ -702,15 +804,924 @@ describe('mcode-cache: enhanced object preview functionality', () =>
     });
 });
 
+describe('mcode-cache: scoped namespace contract', () =>
+{
+    // {AIN-2026-08-26:GPT-5.6 Sol} -- cache inspection must not corrupt the metrics it reports
+    it('inspects paginated Node values without changing hit and miss counters', async () =>
+    {
+        const scoped = cache.addNamespace({name: 'ScopedNodeInspect', type: 'node'});
+        await scoped.cacheSet('inspect:first', {order: 1});
+        await scoped.cacheSet('inspect:second', {order: 2});
+        await scoped.cacheSet('inspect:third', {order: 3});
+        const before = cache.cacheNamespaces.find(namespace => namespace.name === scoped.name);
+        const hits = before.hits;
+        const misses = before.misses;
+        const entries = [];
+        let cursor = '0';
+
+        do
+        {
+            const page = await scoped.inspect({
+                pattern: 'inspect:*',
+                cursor,
+                count: 2,
+                limit: 2,
+                includeValue: true
+            });
+            cursor = page.cursor;
+            entries.push(...page.entries);
+        }
+        while (cursor !== '0');
+
+        expect(entries.map(entry => entry.key).sort()).toEqual([
+            'inspect:first',
+            'inspect:second',
+            'inspect:third'
+        ]);
+        expect(entries.map(entry => entry.value)).toEqual(expect.arrayContaining([
+            {order: 1},
+            {order: 2},
+            {order: 3}
+        ]));
+        const after = cache.cacheNamespaces.find(namespace => namespace.name === scoped.name);
+        expect(after.hits).toBe(hits);
+        expect(after.misses).toBe(misses);
+    });
+
+    it('returns one immutable idempotent handle', () =>
+    {
+        const first = cache.addNamespace({name: 'ScopedNode', type: 'node'});
+        const second = cache.addNamespace({name: 'ScopedNode', type: 'node'});
+
+        expect(first).toBe(second);
+        expect(cache.getNamespace('ScopedNode')).toBe(first);
+        expect(Object.isFrozen(first)).toBe(true);
+        expect(first.name).toBe('ScopedNode');
+        expect(first.type).toBe('node');
+    });
+
+    it('rejects invalid names, physical keys, and conflicting registrations', async () =>
+    {
+        expect(() => cache.addNamespace({name: 'bad:name', type: 'node'}))
+            .toThrow(/Namespace names/);
+        expect(() => cache.addNamespace({name: 'ScopedNode', type: 'redis'}))
+            .toThrow(/already registered/);
+
+        const scoped = cache.getNamespace('ScopedNode');
+        await expect(scoped.cacheGet('ScopedNode:key')).rejects.toMatchObject({
+            code: 'CACHE_ALREADY_PREFIXED'
+        });
+        await expect(scoped.cacheGet('../key')).rejects.toMatchObject({
+            code: 'CACHE_INVALID_KEY'
+        });
+    });
+
+    it('requires explicit Redis connection policy with no localhost fallback', () =>
+    {
+        expect(() => cache.addNamespace({
+            name: 'MissingRedisPolicy',
+            type: 'redis',
+            url: 'redis://127.0.0.1:6379'
+        })).toThrow(/missing explicit configuration/);
+    });
+
+    it('applies typed option validation consistently to scoped node handles', async () =>
+    {
+        const scoped = cache.getNamespace('ScopedNode');
+        expect(await scoped.cacheSet('conditional', {id: 1}, {
+            ifEqual: {id: 0},
+            noExpiry: true
+        })).toBe(false);
+        await expect(scoped.cacheSet('invalid-options', 'value', {
+            ttlSeconds: 1,
+            noExpiry: true
+        })).rejects.toMatchObject({code: 'CACHE_INVALID_OPTIONS'});
+        await expect(scoped.cacheSet('invalid-value', Buffer.from('no'), {noExpiry: true}))
+            .rejects.toMatchObject({code: 'CACHE_VALUE_UNSUPPORTED'});
+    });
+
+    it('exports stable status and minimum-version constants', () =>
+    {
+        expect(cache.redisMinimumVersion).toBe('8.4.0');
+        expect(cache.redisStatus).toEqual({
+            NOT_CONFIGURED: 'not configured',
+            IDLE: 'idle',
+            CONNECTING: 'connecting',
+            CONNECTED: 'connected',
+            DISCONNECTED: 'disconnected'
+        });
+        expect(Object.isFrozen(cache.redisStatus)).toBe(true);
+        expect(cache.cacheErrors.OUTCOME_UNKNOWN).toBe('CACHE_OUTCOME_UNKNOWN');
+        expect(cache.cacheErrors).toMatchObject({
+            INVALID_CHANNEL: 'CACHE_INVALID_CHANNEL',
+            VALUE_TOO_LARGE: 'CACHE_VALUE_TOO_LARGE',
+            REDIS_VERSION: 'CACHE_REDIS_VERSION',
+            INVALID_OPTIONS: 'CACHE_INVALID_OPTIONS',
+            TRANSACTION_PLAN: 'CACHE_TRANSACTION_PLAN',
+            GENERATION_VERIFY: 'CACHE_GENERATION_VERIFY',
+            SUBSCRIBER_CLOSED: 'CACHE_SUBSCRIBER_CLOSED'
+        });
+        expect(Object.isFrozen(cache.cacheErrors)).toBe(true);
+    });
+
+    it('returns outcome-unknown without replaying an adapter mutation', async () =>
+    {
+        let setCalls = 0;
+        class DelayedClient extends EventEmitter
+        {
+            constructor()
+            {
+                super();
+                this.isOpen = false;
+                this.isReady = false;
+            }
+
+            async connect()
+            {
+                this.isOpen = true;
+                this.isReady = true;
+                return this;
+            }
+
+            async ping()
+            {
+                return 'PONG';
+            }
+
+            async info(section)
+            {
+                return section === 'server' ? 'redis_version:8.6.1\r\n' : 'cluster_enabled:0\r\n';
+            }
+
+            async sendCommand()
+            {
+                return [['delex']];
+            }
+
+            set()
+            {
+                setCalls++;
+                return new Promise(() => undefined);
+            }
+
+            async close()
+            {
+                this.isOpen = false;
+                this.isReady = false;
+            }
+
+            destroy()
+            {
+                this.isOpen = false;
+                this.isReady = false;
+            }
+        }
+
+        const delayed = cache.addNamespace({
+            name: 'DelayedAdapter',
+            type: 'redis',
+            url: 'redis://adapter.invalid:6379',
+            username: null,
+            password: null,
+            retry: {baseDelayMs: 1, maxDelayMs: 1, maxAttempts: 1},
+            readyTimeoutMs: 100,
+            commandTimeoutMs: 25,
+            disableOfflineQueue: true,
+            clientFactory: () => new DelayedClient()
+        });
+        await delayed.ready();
+        await expect(delayed.cacheSet('mutation', 'value', {noExpiry: true}))
+            .rejects.toMatchObject({code: 'CACHE_OUTCOME_UNKNOWN'});
+        await new Promise(resolve => setTimeout(resolve, 50));
+        expect(setCalls).toBe(1);
+        await delayed.close();
+    });
+});
+
+describe('mcode-cache: redis integration', () =>
+{
+    let container;
+    let redisHandle;
+    let redisURL;
+
+    const config = name => ({
+        name,
+        type: 'redis',
+        url: redisURL,
+        username: null,
+        password: null,
+        retry: {
+            baseDelayMs: 25,
+            maxDelayMs: 200,
+            maxAttempts: 20
+        },
+        readyTimeoutMs: 10000,
+        commandTimeoutMs: 5000,
+        disableOfflineQueue: true
+    });
+
+    // {AIN-2026-08-26:GPT-5.6 Sol} -- legacy completeness needs efficient boundary fixtures
+    /**
+     * @function writeStringKeys
+     * @memberof mcode-cache.test.redis
+     * @desc Writes deterministic string keys through bounded Redis transactions.
+     * @param {string} prefix - Logical key prefix.
+     * @param {number} count - Number of keys to write.
+     * @returns {Promise<void>} Resolves after all writes complete.
+     */
+    const writeStringKeys = async (prefix, count) =>
+    {
+        for (let start = 0; start < count; start += 100)
+        {
+            const multi = redisHandle.multi();
+            const end = Math.min(start + 100, count);
+            for (let index = start; index < end; index++)
+            {
+                multi.cacheSet(`${prefix}:${index}`, `value-${index}`, {noExpiry: true});
+            }
+            await multi.exec();
+        }
+    };
+
+    /**
+     * @function dropMatchingKeys
+     * @memberof mcode-cache.test.redis
+     * @desc Removes every matching logical key through cursor-safe namespace operations.
+     * @param {string} pattern - Logical key pattern.
+     * @returns {Promise<void>} Resolves after no matching keys remain.
+     */
+    const dropMatchingKeys = async (pattern) =>
+    {
+        while (true)
+        {
+            const page = await redisHandle.scan({
+                pattern,
+                cursor: '0',
+                count: 1000
+            });
+            if (!page.keys.length)
+            {
+                break;
+            }
+            await redisHandle.cacheDrop(page.keys);
+        }
+    };
+
+    beforeAll(async () =>
+    {
+        const hostPort = await getFreePort();
+        container = await new GenericContainer('redis:8.6.1')
+            .withExposedPorts({container: 6379, host: hostPort})
+            .withWaitStrategy(Wait.forLogMessage('Ready to accept connections'))
+            .withStartupTimeout(120000)
+            .start();
+        redisURL = `redis://${container.getHost()}:${container.getMappedPort(6379)}`;
+        redisHandle = cache.addNamespace(config('RedisContract'));
+        await redisHandle.ready();
+    }, 150000);
+
+    afterAll(async () =>
+    {
+        if (redisHandle)
+        {
+            await redisHandle.close();
+        }
+        if (container)
+        {
+            await container.stop();
+        }
+    }, 30000);
+
+    it('probes Redis 8.4 capabilities and exposes stable readiness', async () =>
+    {
+        const probe = await cache.probeNamespace(config('RedisProbe'));
+
+        expect(probe.ok).toBe(true);
+        expect(probe.version.startsWith('8.6.')).toBe(true);
+        expect(redisHandle.status).toBe(cache.redisStatus.CONNECTED);
+        expect(await redisHandle.ping()).toBe('PONG');
+        expect(await redisHandle.info('server')).toContain('redis_version:8.6.');
+        expect(await redisHandle.time()).toEqual({
+            seconds: expect.any(Number),
+            microseconds: expect.any(Number)
+        });
+    });
+
+    it('rejects unavailable and pre-8.4 Redis servers with stable status', async () =>
+    {
+        const unavailable = cache.addNamespace({
+            ...config('RedisUnavailable'),
+            url: 'redis://127.0.0.1:1',
+            retry: {baseDelayMs: 10, maxDelayMs: 20, maxAttempts: 1},
+            readyTimeoutMs: 500
+        });
+        await expect(unavailable.ready({timeoutMs: 1000})).rejects.toBeDefined();
+        expect(unavailable.status).toBe(cache.redisStatus.DISCONNECTED);
+        await unavailable.close();
+
+        const oldContainer = await new GenericContainer('redis:7.4.2-alpine')
+            .withExposedPorts(6379)
+            .withWaitStrategy(Wait.forLogMessage('Ready to accept connections'))
+            .withStartupTimeout(120000)
+            .start();
+        const oldHandle = cache.addNamespace({
+            ...config('RedisOldVersion'),
+            url: `redis://${oldContainer.getHost()}:${oldContainer.getMappedPort(6379)}`
+        });
+        try
+        {
+            await expect(oldHandle.ready()).rejects.toMatchObject({
+                code: 'CACHE_REDIS_VERSION'
+            });
+            expect(oldHandle.status).toBe(cache.redisStatus.DISCONNECTED);
+        }
+        finally
+        {
+            await oldHandle.close();
+            await oldContainer.stop();
+        }
+    }, 150000);
+
+    it('round-trips typed values and native SET/DELEX conditions', async () =>
+    {
+        expect(await redisHandle.cacheGet('missing')).toBeUndefined();
+        expect(await redisHandle.cacheSet('typed:null', null, {noExpiry: true})).toBe(true);
+        expect(await redisHandle.cacheGet('typed:null')).toBeNull();
+
+        const value = {z: [true, 42, null], a: 'canonical'};
+        expect(await redisHandle.cacheSet('typed:object', value, {ifMissing: true, ttlMilliseconds: 5000}))
+            .toBe(true);
+        expect(await redisHandle.cacheSet('typed:object', value, {ifMissing: true}))
+            .toBe(false);
+        expect(await redisHandle.cacheSet('typed:object', {changed: true}, {
+            ifEqual: {a: 'canonical', z: [true, 42, null]},
+            keepTTL: true
+        })).toBe(true);
+        expect(await redisHandle.cachePTTL('typed:object')).toBeGreaterThan(0);
+        expect(await redisHandle.cacheDropIfEqual('typed:object', value)).toBe(false);
+        expect(await redisHandle.cacheDropIfEqual('typed:object', {changed: true})).toBe(true);
+
+        await expect(redisHandle.cacheSet('unsupported', Buffer.from('no'), {noExpiry: true}))
+            .rejects.toMatchObject({code: 'CACHE_VALUE_UNSUPPORTED'});
+    });
+
+    it('supports bounded multi-get, TTL, scan, and representative payloads', async () =>
+    {
+        const payload = {data: 'x'.repeat(132 * 1024)};
+        await redisHandle.cacheSet('payload:large', payload, {ttlSeconds: 30});
+        await redisHandle.cacheSet('payload:small', 'value', {noExpiry: true});
+
+        expect(await redisHandle.cacheGetMany(['payload:large', 'payload:small', 'payload:missing']))
+            .toEqual([payload, 'value', undefined]);
+        expect(await redisHandle.cacheTTL('payload:large')).toBeGreaterThan(0);
+        expect(await redisHandle.cacheTTL('payload:missing')).toBe(-2);
+        expect(await redisHandle.cacheExpire('payload:small', {milliseconds: 3000})).toBe(true);
+
+        const page = await redisHandle.scan({pattern: 'payload:*', count: 100});
+        expect(page.keys).toEqual(expect.arrayContaining(['payload:large', 'payload:small']));
+        expect(page.keys.every(key => !key.startsWith('RedisContract:'))).toBe(true);
+        const inspection = await redisHandle.inspect({
+            pattern: 'payload:*',
+            count: 100,
+            limit: 10,
+            includeValue: false
+        });
+        expect(inspection.entries.length).toBeGreaterThanOrEqual(2);
+    });
+
+    // {AIN-2026-08-26:GPT-5.6 Sol} -- cursor truncation made cache administration silently incomplete
+    it('inspects every Redis key once without changing hit and miss counters', async () =>
+    {
+        const prefix = 'inspect-page';
+        await writeStringKeys(prefix, 25);
+        const before = cache.cacheNamespaces.find(namespace => namespace.name === redisHandle.name);
+        const hits = before.hits;
+        const misses = before.misses;
+        const entries = [];
+        let cursor = '0';
+
+        try
+        {
+            do
+            {
+                const page = await redisHandle.inspect({
+                    pattern: `${prefix}:*`,
+                    cursor,
+                    count: 100,
+                    limit: 3,
+                    includeValue: true
+                });
+                cursor = page.cursor;
+                entries.push(...page.entries);
+            }
+            while (cursor !== '0');
+
+            expect(entries).toHaveLength(25);
+            expect(new Set(entries.map(entry => entry.key)).size).toBe(25);
+            expect(entries.every(entry => entry.value?.startsWith('value-'))).toBe(true);
+            const after = cache.cacheNamespaces.find(namespace => namespace.name === redisHandle.name);
+            expect(after.hits).toBe(hits);
+            expect(after.misses).toBe(misses);
+        }
+        finally
+        {
+            await dropMatchingKeys(`${prefix}:*`);
+        }
+    });
+
+    // {ISSUE#0149:Grok-4.6} -- process-local hits hid every other consumer
+    it('shares Redis hit and miss counts across consumers', async () =>
+    {
+        const present = 'access:present';
+        const missing = 'access:missing';
+        await redisHandle.cacheSet(present, 'yes', {noExpiry: true});
+        await redisHandle.cacheDrop([
+            'ops:access'
+        ]);
+        await cache.refreshCacheStatistics();
+        const zeroed = cache.cacheNamespaces.find(namespace => namespace.name === redisHandle.name);
+        expect(zeroed.hits).toBe(0);
+        expect(zeroed.misses).toBe(0);
+
+        expect(await redisHandle.cacheGet(present)).toBe('yes');
+        expect(await redisHandle.cacheGet(missing)).toBeUndefined();
+
+        const Redis = require('redis');
+        const other = Redis.createClient({url: redisURL});
+        await other.connect();
+        await other.hIncrBy(`${redisHandle.name}:ops:access`, 'hits', 4);
+        await other.hIncrBy(`${redisHandle.name}:ops:access`, 'misses', 3);
+        await other.quit();
+
+        await cache.refreshCacheStatistics();
+        const shared = cache.cacheNamespaces.find(namespace => namespace.name === redisHandle.name);
+        expect(shared.hits).toBe(5);
+        expect(shared.misses).toBe(4);
+
+        await redisHandle.cacheDrop([
+            present,
+            'ops:access'
+        ]);
+    });
+
+    // {AIN-2026-08-26:GPT-5.6 Sol} -- eMITS legacy all-key calls must remain complete after Redis SCAN migration
+    it('keeps deprecated Redis list and flush complete beyond former limits', async () =>
+    {
+        const listPrefix = 'legacy-list';
+        const flushPrefix = 'legacy-flush';
+
+        try
+        {
+            await writeStringKeys(listPrefix, 1005);
+            const listed = await cache.cacheListAll({
+                cache: 'redis',
+                namespace: redisHandle.name,
+                pattern: `${listPrefix}:*`
+            });
+            expect(listed).toHaveLength(1005);
+
+            await writeStringKeys(flushPrefix, 10005);
+            const deleted = await cache.cacheDropAll({
+                cache: 'redis',
+                namespace: redisHandle.name,
+                pattern: `${flushPrefix}:*`
+            });
+            expect(deleted).toBe(10005);
+            const remaining = await redisHandle.scan({
+                pattern: `${flushPrefix}:*`,
+                cursor: '0',
+                count: 1000
+            });
+            expect(remaining.keys).toEqual([]);
+        }
+        finally
+        {
+            await dropMatchingKeys(`${listPrefix}:*`);
+            await dropMatchingKeys(`${flushPrefix}:*`);
+        }
+    }, 120000);
+
+    it('keeps deprecated Redis singleton calls on the selected namespace client', async () =>
+    {
+        const originalNamespace = cache.cacheNamespace;
+        try
+        {
+            cache.cacheNamespace = 'RedisContract';
+            await cache.cacheSet('legacy-key', 'legacy-value');
+            expect(await cache.cacheGet('legacy-key')).toBe('legacy-value');
+            const listed = await cache.cacheListAll({
+                cache: 'redis',
+                namespace: 'RedisContract',
+                pattern: 'legacy-key'
+            });
+            expect(listed).toEqual([
+                expect.objectContaining({
+                    namespace: 'RedisContract',
+                    key: 'legacy-key',
+                    cache: 'redis',
+                    preview: 'legacy-value'
+                })
+            ]);
+        }
+        finally
+        {
+            cache.cacheNamespace = originalNamespace;
+        }
+    });
+
+    it('supports geo and sorted-set operations', async () =>
+    {
+        await redisHandle.geoAdd('geo:vessels', [
+            {longitude: -80.1918, latitude: 25.7617, member: 'vessel-miami'},
+            {longitude: -80.13, latitude: 26.12, member: 'vessel-fort-lauderdale'}
+        ]);
+        const nearby = await redisHandle.geoSearch('geo:vessels', {
+            from: {longitude: -80.1918, latitude: 25.7617},
+            radius: 100,
+            unit: 'km',
+            sort: 'ASC'
+        });
+        expect(nearby).toEqual(expect.arrayContaining(['vessel-miami', 'vessel-fort-lauderdale']));
+        expect(await redisHandle.geoRemove('geo:vessels', 'vessel-fort-lauderdale')).toBe(1);
+
+        await redisHandle.sortedSetAdd('rank:vessels', [
+            {member: 'vessel-a', score: 10},
+            {member: 'vessel-b', score: 20}
+        ]);
+        expect(await redisHandle.sortedSetRange('rank:vessels', {start: 0, stop: -1}))
+            .toEqual(['vessel-a', 'vessel-b']);
+        expect(await redisHandle.sortedSetRangeByScore('rank:vessels', {
+            min: 0,
+            max: 20,
+            withScores: true
+        })).toEqual([
+            {member: 'vessel-a', score: 10},
+            {member: 'vessel-b', score: 20}
+        ]);
+        expect(await redisHandle.sortedSetRank('rank:vessels', 'vessel-b')).toBe(1);
+        expect(await redisHandle.sortedSetScore('rank:vessels', 'vessel-a')).toBe(10);
+        // {AIN-2026-08-26:GPT-5.6 Sol} -- documented score cleanup was absent from the package facade
+        expect(await redisHandle.sortedSetCount('rank:vessels', {min: 0, max: 20})).toBe(2);
+        expect(await redisHandle.sortedSetRemoveByScore('rank:vessels', {min: 15, max: '+inf'})).toBe(1);
+        expect(await redisHandle.cacheExpire('rank:vessels', {milliseconds: 5000})).toBe(true);
+        expect(await redisHandle.cachePTTL('rank:vessels')).toBeGreaterThan(0);
+    });
+
+    it('normalizes MULTI replies and retries bounded WATCH contention', async () =>
+    {
+        const replies = await redisHandle.multi()
+            .cacheSet('multi:vessel', {version: 1}, {noExpiry: true})
+            .geoAdd('multi:geo', {
+                longitude: -80.1918,
+                latitude: 25.7617,
+                member: 'multi-vessel'
+            })
+            .exec();
+        expect(replies).toEqual([
+            {result: true, error: null},
+            {result: 1, error: null}
+        ]);
+
+        const transaction = await redisHandle.watchTransaction({
+            keys: ['multi:vessel'],
+            maxRetries: 2,
+            deadlineMs: 10000
+        }, async (session, attempt) =>
+        {
+            const current = await session.cacheGet('multi:vessel');
+            if (attempt === 0)
+            {
+                await redisHandle.cacheSet('multi:vessel', {version: 2}, {noExpiry: true});
+            }
+            return session.multi().cacheSet('multi:vessel', {
+                version: current.version + 1
+            }, {noExpiry: true});
+        });
+
+        expect(transaction).toEqual([{result: true, error: null}]);
+        expect(await redisHandle.cacheGet('multi:vessel')).toEqual({version: 3});
+
+        await redisHandle.sortedSetAdd('multi:expiry', [
+            {member: 'expired', score: 10},
+            {member: 'active', score: 20}
+        ]);
+        const expiry = await redisHandle.watchTransaction({
+            keys: ['multi:expiry'],
+            maxRetries: 2,
+            deadlineMs: 10000
+        }, async session =>
+        {
+            expect(await session.sortedSetRangeByScore('multi:expiry', {min: '-inf', max: 10}))
+                .toEqual(['expired']);
+            expect(await session.sortedSetCount('multi:expiry', {min: '-inf', max: '+inf'})).toBe(2);
+            return session.multi().sortedSetRemoveByScore('multi:expiry', {min: '-inf', max: 10});
+        });
+        expect(expiry).toEqual([{result: 1, error: null}]);
+        expect(await redisHandle.sortedSetRange('multi:expiry', {start: 0, stop: -1}))
+            .toEqual(['active']);
+    });
+
+    it('publishes typed values on isolated subscriber connections', async () =>
+    {
+        const subscriber = await redisHandle.createSubscriber({timeoutMs: 5000});
+        let resolveReceived;
+        let rejectReceived;
+        let deliveries = 0;
+        const received = new Promise((resolve, reject) =>
+        {
+            resolveReceived = resolve;
+            rejectReceived = reject;
+        });
+        const timeout = setTimeout(() => rejectReceived(new Error('subscriber timeout')), 5000);
+        const callback = (value, channel) =>
+        {
+            deliveries++;
+            clearTimeout(timeout);
+            resolveReceived({value, channel});
+        };
+        await subscriber.subscribe('updates:vessels', callback);
+        await subscriber.subscribe('updates:vessels', callback);
+
+        expect(await redisHandle.publish('updates:vessels', {id: 'vessel-a'})).toBe(1);
+        await expect(received).resolves.toEqual({
+            value: {id: 'vessel-a'},
+            channel: 'updates:vessels'
+        });
+        expect(deliveries).toBe(1);
+        await Promise.all([subscriber.close(), subscriber.close()]);
+        expect(subscriber.closed).toBe(true);
+    });
+
+    it('performs guarded generation reset without crossing namespaces', async () =>
+    {
+        const other = cache.addNamespace(config('RedisOther'));
+        await other.ready();
+        await other.cacheSet('preserved', 'yes', {noExpiry: true});
+        await redisHandle.cacheSet('reset:a', {id: 1}, {noExpiry: true});
+        await redisHandle.cacheSet('reset:b', {id: 2}, {noExpiry: true});
+        await Promise.all(Array.from({length: 250}, (_, index) =>
+            redisHandle.cacheSet(`reset:bulk:${index}`, {id: index}, {noExpiry: true})));
+
+        await expect(redisHandle.resetGeneration({
+            markerKey: 'generation:marker',
+            generation: 'generation-invalid',
+            guardKey: 'generation:guard',
+            guardToken: 'owner-token',
+            guardTtlMilliseconds: 1000,
+            deadlineMs: 2000,
+            scanCount: 100,
+            maxKeys: 1000,
+            maxRetries: 2,
+            acquireGuard: true,
+            releaseGuard: true
+        })).rejects.toMatchObject({code: 'CACHE_INVALID_OPTIONS'});
+
+        const result = await redisHandle.resetGeneration({
+            markerKey: 'generation:marker',
+            generation: 'generation-2',
+            guardKey: 'generation:guard',
+            guardToken: 'owner-token',
+            guardTtlMilliseconds: 30000,
+            deadlineMs: 20000,
+            scanCount: 100,
+            maxKeys: 1000,
+            maxRetries: 2,
+            acquireGuard: true,
+            releaseGuard: true
+        });
+
+        expect(result.changed).toBe(true);
+        expect(result.deleted).toBeGreaterThanOrEqual(252);
+        expect(await redisHandle.ensureGeneration({
+            markerKey: 'generation:marker',
+            generation: 'generation-2'
+        })).toEqual({
+            current: true,
+            marker: {generation: 'generation-2', state: 'ready'}
+        });
+        // {AIN-2026-08-26:GPT-5.6 Sol} -- operator reset must clear data without changing app generation
+        await redisHandle.cacheSet('reset:force', {id: 3}, {noExpiry: true});
+        const forced = await redisHandle.resetGeneration({
+            markerKey: 'generation:marker',
+            generation: 'generation-2',
+            guardKey: 'generation:guard',
+            guardToken: 'operator-token',
+            guardTtlMilliseconds: 30000,
+            deadlineMs: 20000,
+            scanCount: 100,
+            maxKeys: 1000,
+            maxRetries: 2,
+            acquireGuard: true,
+            releaseGuard: true,
+            force: true
+        });
+        expect(forced).toEqual({changed: true, generation: 'generation-2', deleted: 1});
+        expect(await redisHandle.cacheGet('reset:force')).toBeUndefined();
+        expect(await other.cacheGet('preserved')).toBe('yes');
+        await other.close();
+    });
+
+    it('coexists with Bull 4 without exposing Bull or ioredis APIs', async () =>
+    {
+        const queue = new Bull(`mcode-cache-${Date.now()}`, redisURL, {
+            prefix: 'bull:mcode-cache-test'
+        });
+        try
+        {
+            await queue.isReady();
+            const job = await queue.add({vessel: 'vessel-a'});
+            expect((await queue.getJob(job.id)).data).toEqual({vessel: 'vessel-a'});
+            expect(await redisHandle.ping()).toBe('PONG');
+            expect(redisHandle.client).toBeUndefined();
+        }
+        finally
+        {
+            await queue.empty();
+            await queue.close();
+        }
+    }, 30000);
+
+    it('closes idempotently and recreates the command connection', async () =>
+    {
+        await Promise.all([redisHandle.close(), redisHandle.close()]);
+        expect(redisHandle.status).toBe(cache.redisStatus.IDLE);
+
+        await redisHandle.ready({timeoutMs: 10000});
+        expect(redisHandle.status).toBe(cache.redisStatus.CONNECTED);
+        expect(await redisHandle.ping()).toBe('PONG');
+    });
+
+    it('recovers the command connection after a Redis restart', async () =>
+    {
+        await redisHandle.cacheSet('recovery:key', {alive: true}, {noExpiry: true});
+        await container.restart({timeout: 10000});
+        redisURL = `redis://${container.getHost()}:${container.getMappedPort(6379)}`;
+        let serverReady = false;
+        for (let attempt = 0; attempt < 20 && !serverReady; attempt++)
+        {
+            try
+            {
+                await cache.probeNamespace({
+                    ...config(`RedisRestartProbe${attempt}`),
+                    retry: {baseDelayMs: 10, maxDelayMs: 20, maxAttempts: 1},
+                    readyTimeoutMs: 500
+                });
+                serverReady = true;
+            }
+            catch (error)
+            {
+                await new Promise(resolve => setTimeout(resolve, 250));
+            }
+        }
+        expect(serverReady).toBe(true);
+        await redisHandle.ready({timeoutMs: 10000});
+
+        expect(redisHandle.status).toBe(cache.redisStatus.CONNECTED);
+        expect(await redisHandle.cacheGet('recovery:key')).toEqual({alive: true});
+    }, 90000);
+});
+
+describe('mcode-cache: package artifact', () =>
+{
+    it('contains no runtime script execution or direct ioredis dependency', () =>
+    {
+        const source = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+        const packageJSON = require('./package.json');
+
+        expect(source).not.toMatch(/\.(eval|evalSha|scriptLoad)\s*\(/);
+        expect(packageJSON.dependencies.ioredis).toBeUndefined();
+        expect(packageJSON.dependencies.bull).toBeUndefined();
+        expect(packageJSON.devDependencies.bull).toMatch(/^\^4\./);
+    });
+
+    it('documents every class function with the house JSDoc header', () =>
+    {
+        const lines = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8').split(/\r?\n/);
+        const methodPattern = /^    (?:(?:async)\s+)?([A-Za-z_$][\w$]*)\s*\([^;]*\)\s*$/;
+        const accessorPattern = /^    (?:get|set)\s+([A-Za-z_$][\w$]*)\s*\([^;]*\)\s*$/;
+        const controlKeywords = new Set(['if', 'for', 'while', 'switch', 'catch']);
+        const undocumented = [];
+
+        for (let lineIndex = 0; lineIndex < lines.length; lineIndex++)
+        {
+            const methodMatch = lines[lineIndex].match(methodPattern);
+            const accessorMatch = lines[lineIndex].match(accessorPattern);
+            if (!methodMatch && !accessorMatch)
+            {
+                continue;
+            }
+
+            let commentEnd = lineIndex - 1;
+            while (commentEnd >= 0 && lines[commentEnd].trim() === '')
+            {
+                commentEnd--;
+            }
+
+            let commentStart = commentEnd;
+            while (commentStart >= 0 && !lines[commentStart].includes('/**'))
+            {
+                commentStart--;
+            }
+
+            const declarationName = accessorMatch?.[1] || methodMatch[1];
+            if (controlKeywords.has(declarationName))
+            {
+                continue;
+            }
+
+            const comment = commentStart >= 0 && lines[commentEnd].trim() === '*/' ?
+                lines.slice(commentStart, commentEnd + 1).join('\n') :
+                '';
+            const isConstructor = declarationName === 'constructor';
+            const validHeader = isConstructor ?
+                /@constructor\b/.test(comment) :
+                accessorMatch ?
+                    /@property\b/.test(comment) :
+                    new RegExp(`@func(?:tion)?\\s+${declarationName}\\b`).test(comment) &&
+                        /@memberof\s+mcode\.cache\b/.test(comment) &&
+                        /@desc\b/.test(comment) &&
+                        /@returns?\b/.test(comment);
+
+            if (!validHeader)
+            {
+                undocumented.push(`${declarationName}:${lineIndex + 1}`);
+            }
+        }
+
+        expect(undocumented).toEqual([]);
+    });
+
+    it('packs and installs the declared public package files', () =>
+    {
+        const npmCLI = process.env.npm_execpath ||
+            path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+        const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mcode-cache-artifact-'));
+        try
+        {
+            const output = execFileSync(process.execPath, [
+                npmCLI,
+                'pack',
+                '--json',
+                '--pack-destination',
+                temporaryRoot
+            ], {
+                cwd: __dirname,
+                encoding: 'utf8'
+            });
+            const packResult = JSON.parse(output)[0];
+            const packedFiles = packResult.files.map(file => file.path);
+
+            expect(packedFiles).toEqual(expect.arrayContaining([
+                'index.js',
+                'package.json',
+                'README.md',
+                'LICENSE',
+                'docs/index.html',
+                'docs/index.js.html',
+                'docs/mcode.cache.html'
+            ]));
+            expect(packedFiles.some(file => file.startsWith('node_modules/'))).toBe(false);
+            expect(packedFiles.some(file => file.endsWith('index.test.js'))).toBe(false);
+            expect(packedFiles).not.toEqual(expect.arrayContaining([
+                'docs/cache.html',
+                'docs/cache%20class%20constructor..html',
+                'docs/mcode.html'
+            ]));
+
+            const consumer = path.join(temporaryRoot, 'consumer');
+            fs.mkdirSync(consumer);
+            fs.writeFileSync(path.join(consumer, 'package.json'), JSON.stringify({
+                name: 'mcode-cache-artifact-consumer',
+                private: true,
+                version: '1.0.0'
+            }));
+            execFileSync(process.execPath, [
+                npmCLI,
+                'install',
+                '--ignore-scripts',
+                '--no-audit',
+                '--no-fund',
+                path.join(temporaryRoot, packResult.filename)
+            ], {cwd: consumer, encoding: 'utf8'});
+            const installedVersion = execFileSync(process.execPath, [
+                '-e',
+                "const c=require('mcode-cache'); process.stdout.write(require('mcode-cache/package.json').version+'|'+c.redisMinimumVersion);"
+            ], {cwd: consumer, encoding: 'utf8'});
+            expect(installedVersion).toContain('0.9.0|8.4.0');
+        }
+        finally
+        {
+            fs.rmSync(temporaryRoot, {recursive: true, force: true});
+        }
+    });
+});
+
 // Global teardown after all test suites
 afterAll(async () =>
 {
-    if (cache.cacheReady)
-    {
-        await cache.cacheClose();
-        mcode.info('Cache connections closed after all tests completed', MODULE_NAME);
+    await cache.closeNamespace();
+    mcode.info('Cache connections closed after all tests completed', MODULE_NAME);
 
-        // Give a moment for cleanup to complete
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
+    // Give a moment for cleanup to complete
+    await new Promise(resolve => setTimeout(resolve, 100));
 }, 10000); // Increase timeout for cleanup

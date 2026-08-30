@@ -34,7 +34,7 @@
     <div class="container-overview">
     
         
-            <div class="description">>     MicroCODE File and Data Caching Library     LICENSE:     --------     MIT License: MicroCODE.mcode-cache     Copyright (c) 2022-2024 Timothy McGuire, MicroCODE, Inc.     Permission is hereby granted, free of charge, to any person obtaining a copy     of this software and associated documentation files (the "Software"), to deal     in the Software without restriction, including without limitation the rights     to use, copy, modify, merge, publish, distribute, sublicense, and/or sell     copies of the Software, and to permit persons to whom the Software is     furnished to do so, subject to the following conditions:     The above copyright notice and this permission notice shall be included in all     copies or substantial portions of the Software.     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE     AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE     SOFTWARE.     DESCRIPTION:     ------------     This module implements the MicroCODE's Common JavaScript functions for data caching.     NOTE:     o  'key' in this code refers to the Application Key or File Path.     o  'cacheKey' in this code refers to a fully qualified cache Key.     o  'cacheKeys' are made from 'key' values by the 'cacheMakeKey()' method,                    which formats the 'key' into a cache Key with a prefix                    based on the current Namespace.     o  '_cache*()' are private methods that are not exposed to the caller,                    these expect 'cacheKey' values, not 'key' values.       <key> - application 'key' format       <namespace>:<key> - 'cacheKey' format     Examples:        key:      '/backend/components/app/tool/tool.template.htmx'        cacheKey: 'GM-GPS-eMITS-UI:backend:components:app:tool:tool.template.htmx'        key:      'myKey'        cacheKey: 'MicroCODE:myKey'     REFERENCES:     -----------     1. MIT xPRO Course: Professional Certificate in Coding: Full Stack Development with MERN     2. MicroCODE JavaScript Style Guide        Local File: MCX-S02 (Internal JS Style Guide).docx        https://github.com/MicroCODEIncorporated/JavaScriptSG     MODIFICATIONS:     --------------     Date:         By-Group:   Rev:    Description:     30-Jan-2024   TJM-MCODE  {0001}   New module for common reusable JavaScript data caching functions.     01-Feb-2024   TJM-MCODE  {0002}   Changed to the Universal Module Definition (UMD) pattern to support AMD,                                       CommonJS/Node.js, and browser global in our exported module.     15-Sep-2024   TJM-MCODE  {0003}   Extended to support *node-cache* package for caching local information                                       to avoid network latency, this is now the default cache provider.NOTE: This module follow's MicroCODE's JavaScript Style Guide and Template JS file, see:      o  https://github.com/MicroCODEIncorporated/JavaScriptSG      o  https://github.com/MicroCODEIncorporated/TemplatesJS...be sure to check out the CTRL-SHIFT+K, +L, +J keybaord shortcuts in Visual Studio Code   for taking advance of the #regions in this file and our templates.</div>
+            <div class="description">>     MicroCODE File and Data Caching Library     LICENSE:     --------     MIT License: MicroCODE.mcode-cache     Copyright (c) 2022-2024 Timothy McGuire, MicroCODE, Inc.     Permission is hereby granted, free of charge, to any person obtaining a copy     of this software and associated documentation files (the "Software"), to deal     in the Software without restriction, including without limitation the rights     to use, copy, modify, merge, publish, distribute, sublicense, and/or sell     copies of the Software, and to permit persons to whom the Software is     furnished to do so, subject to the following conditions:     The above copyright notice and this permission notice shall be included in all     copies or substantial portions of the Software.     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE     AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE     SOFTWARE.     DESCRIPTION:     ------------     This module implements the MicroCODE's Common JavaScript functions for data caching.     NOTE:     o  'key' in this code refers to the Application Key or File Path.     o  'cacheKey' in this code refers to a fully qualified cache Key.     o  'cacheKeys' are made from 'key' values by the 'cacheMakeKey()' method,                    which formats the 'key' into a cache Key with a prefix                    based on the current Namespace.     o  '_cache*()' are private methods that are not exposed to the caller,                    these expect 'cacheKey' values, not 'key' values.       <key> - application 'key' format       <namespace>:<key> - 'cacheKey' format     Examples:        key:      '/backend/components/app/tool/tool.template.htmx'        cacheKey: 'GM-GPS-eMITS-UI:backend:components:app:tool:tool.template.htmx'        key:      'myKey'        cacheKey: 'MicroCODE:myKey'     REFERENCES:     -----------     1. MIT xPRO Course: Professional Certificate in Coding: Full Stack Development with MERN     2. MicroCODE JavaScript Style Guide        Local File: MCX-S02 (Internal JS Style Guide).docx        https://github.com/MicroCODEIncorporated/JavaScriptSG     MODIFICATIONS:     --------------     Date:         By-Group:   Rev:    Description:     30-Jan-2024   TJM-MCODE  {0001}   New module for common reusable JavaScript data caching functions.     01-Feb-2024   TJM-MCODE  {0002}   Changed to the Universal Module Definition (UMD) pattern to support AMD,                                       CommonJS/Node.js, and browser global in our exported module.     15-Sep-2024   TJM-MCODE  {0003}   Extended to support *node-cache* package for caching local information                                       to avoid network latency, this is now the default cache provider.     26-Aug-2026   TJM-MCODE  {0004}   Added immutable namespace handles and native Redis 8.4+ contracts for                                       typed values, transactions, geo, generation reset, and pub/sub.NOTE: This module follow's MicroCODE's JavaScript Style Guide and Template JS file, see:      o  https://github.com/MicroCODEIncorporated/JavaScriptSG      o  https://github.com/MicroCODEIncorporated/TemplatesJS...be sure to check out the CTRL-SHIFT+K, +L, +J keybaord shortcuts in Visual Studio Code   for taking advance of the #regions in this file and our templates.</div>
         
 
         
@@ -97,21 +97,18 @@
     
 
     
-        <h3 class="subsection-title">Classes</h3>
+
+    
+
+    
+
+    
+        <h3 class="subsection-title">Namespaces</h3>
 
         <dl>
-            <dt><a href="mcode.module__mcode-cache.js_-cache.html">cache</a></dt>
-            <dd></dd>
-        
-            <dt><a href="mcode.module__mcode-cache.js_-cache%2520class%2520constructor..html">cache class constructor.</a></dt>
+            <dt><a href="mcode.module__mcode-cache.js_-mcode.html">mcode</a></dt>
             <dd></dd>
         </dl>
-    
-
-    
-
-    
-
     
 
     
@@ -131,13 +128,13 @@
 </div>
 
 <nav>
-    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="mcode.module__mcode-cache.js_.html">'mcode-cache.js'</a></li></ul><h3>Classes</h3><ul><li><a href="mcode.module__mcode-cache.js_-cache.html">cache</a></li><li><a href="mcode.module__mcode-cache.js_-cache%2520class%2520constructor..html">cache class constructor.</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="mcode.module__mcode-cache.js_.html">'mcode-cache.js'</a></li></ul><h3>Namespaces</h3><ul><li><a href="mcode.module__mcode-cache.js_-mcode.html">mcode</a></li></ul><h3>Classes</h3><ul><li><a href="mcode.cache.html">cache</a></li></ul>
 </nav>
 
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Wed Nov 05 2025 14:30:07 GMT-0500 (Eastern Standard Time)
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Wed Aug 26 2026 20:50:17 GMT-0400 (Eastern Daylight Time)
 </footer>
 
 <script> prettyPrint(); </script>

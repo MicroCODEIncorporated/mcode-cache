@@ -29,7 +29,7 @@
 <header>
     
         <h2><span class="attribs"><span class="type-signature"></span></span>
-            <span class="ancestors"><a href="mcode.module__mcode-cache.js_.html">.'mcode-cache.js'</a>~</span>cache<span class="signature">()</span><span class="type-signature"></span></h2>
+            <span class="ancestors"><a href="mcode.module__mcode-cache.js_.html">.'mcode-cache.js'</a>~</span>cache<span class="signature">()</span><span class="type-signature"> &rarr; {cache}</span></h2>
         
             <div class="class-description">cache Class to provide transparent data caching for MicroCODE applications.</div>
         
@@ -46,12 +46,16 @@
     
 
     
-    <h4 class="name" id="cache"><span class="type-signature"></span>new cache<span class="signature">()</span><span class="type-signature"></span></h4>
+    <h4 class="name" id="cache"><span class="type-signature"></span>new cache<span class="signature">()</span><span class="type-signature"> &rarr; {cache}</span></h4>
     
 
     
 
 
+
+<div class="description">
+    Creates or returns the singleton cache instance.
+</div>
 
 
 
@@ -94,7 +98,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line133">line 133</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line134">line 134</a>
     </li></ul></dd>
     
 
@@ -119,6 +123,28 @@
 
 
 
+<h5>Returns:</h5>
+
+        
+<div class="param-desc">
+    the singleton cache instance.
+</div>
+
+
+
+<dl>
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">cache</span>
+
+
+    </dd>
+</dl>
+
+    
 
 
 
@@ -144,7 +170,7 @@
 
         
             
-<h4 class="name" id="_privateExample"><span class="type-signature"></span>_privateExample<span class="type-signature"></span></h4>
+<h4 class="name" id="cacheErrors"><span class="type-signature"></span>cacheErrors<span class="type-signature"></span></h4>
 
 
 
@@ -181,13 +207,13 @@
 
         <tr>
             
-                <td class="name"><code>_privateExample</code></td>
+                <td class="name"><code>cacheErrors</code></td>
             
 
             <td class="type">
             
                 
-<span class="param-type">string</span>
+<span class="param-type">object</span>
 
 
             
@@ -197,7 +223,7 @@
 
             
 
-            <td class="description last">an example of a private property.</td>
+            <td class="description last">the frozen stable package error codes for operational branching.</td>
         </tr>
 
     
@@ -236,7 +262,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line324">line 324</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line548">line 548</a>
     </li></ul></dd>
     
 
@@ -346,7 +372,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line263">line 263</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line295">line 295</a>
     </li></ul></dd>
     
 
@@ -456,7 +482,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line251">line 251</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line283">line 283</a>
     </li></ul></dd>
     
 
@@ -517,7 +543,7 @@
             <td class="type">
             
                 
-<span class="param-type">number</span>
+<span class="param-type">boolean</span>
 
 
             
@@ -527,7 +553,7 @@
 
             
 
-            <td class="description last">the cache instance and default namespace has=ve been established successfully.</td>
+            <td class="description last">whether the cache instance and configured Redis namespaces are ready.</td>
         </tr>
 
     
@@ -566,7 +592,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line223">line 223</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line247">line 247</a>
     </li></ul></dd>
     
 
@@ -676,7 +702,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line238">line 238</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line262">line 262</a>
     </li></ul></dd>
     
 
@@ -694,13 +720,65 @@
 
         
             
-<h4 class="name" id="namedEnum1"><span class="type-signature"></span>namedEnum1<span class="type-signature"></span></h4>
+<h4 class="name" id="redisMinimumVersion"><span class="type-signature"></span>redisMinimumVersion<span class="type-signature"></span></h4>
 
 
 
 
 
 
+
+
+
+
+    <h5 class="subsection-title">Properties:</h5>
+
+    
+
+<table class="props">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>redisMinimumVersion</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">the minimum supported Redis server version.</td>
+        </tr>
+
+    
+    </tbody>
+</table>
 
 
 
@@ -734,7 +812,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line205">line 205</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line540">line 540</a>
     </li></ul></dd>
     
 
@@ -844,7 +922,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line312">line 312</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line376">line 376</a>
     </li></ul></dd>
     
 
@@ -954,7 +1032,117 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line288">line 288</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line336">line 336</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+        
+            
+<h4 class="name" id="redisStatus"><span class="type-signature"></span>redisStatus<span class="type-signature"></span></h4>
+
+
+
+
+
+
+
+
+
+
+    <h5 class="subsection-title">Properties:</h5>
+
+    
+
+<table class="props">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>redisStatus</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">object</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">the frozen stable Redis namespace status constants.</td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line532">line 532</a>
     </li></ul></dd>
     
 
@@ -1064,7 +1252,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line276">line 276</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line316">line 316</a>
     </li></ul></dd>
     
 
@@ -1174,7 +1362,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line300">line 300</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line356">line 356</a>
     </li></ul></dd>
     
 
@@ -1193,350 +1381,6 @@
         
     
 
-    
-        <h3 class="subsection-title">Methods</h3>
-
-        
-            
-
-    
-
-    
-    <h4 class="name" id=""><span class="type-signature"></span><span class="signature">()</span><span class="type-signature"></span></h4>
-    
-
-    
-
-
-
-<div class="description">
-    iterator1 - a description of this iterator, its use, and meaning.
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-<dl class="details">
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-    <dt class="tag-source">Source:</dt>
-    <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line340">line 340</a>
-    </li></ul></dd>
-    
-
-    
-
-    
-
-    
-</dl>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-            
-
-    
-
-    
-    <h4 class="name" id="_getValue"><span class="type-signature">(generator) </span>_getValue<span class="signature">()</span><span class="type-signature"></span></h4>
-    
-
-    
-
-
-
-<div class="description">
-    getValue() - returns all values in 'enums'. TEMPLATE marked private '_' for now.
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-<dl class="details">
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-    <dt class="tag-source">Source:</dt>
-    <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line1066">line 1066</a>
-    </li></ul></dd>
-    
-
-    
-
-    
-
-    
-</dl>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-            
-
-    
-
-    
-    <h4 class="name" id=".static1"><span class="type-signature">(static) </span>static1<span class="signature">(param1)</span><span class="type-signature"> &rarr; {type}</span></h4>
-    
-
-    
-
-
-
-<div class="description">
-    static1() – description of public static method, called by prototype not object.            This does not operate on a specific copy of a Class object.
-</div>
-
-
-
-
-
-
-
-
-
-    <h5>Parameters:</h5>
-    
-
-<table class="params">
-    <thead>
-    <tr>
-        
-        <th>Name</th>
-        
-
-        <th>Type</th>
-
-        
-
-        
-
-        <th class="last">Description</th>
-    </tr>
-    </thead>
-
-    <tbody>
-    
-
-        <tr>
-            
-                <td class="name"><code>param1</code></td>
-            
-
-            <td class="type">
-            
-                
-<span class="param-type">type</span>
-
-
-            
-            </td>
-
-            
-
-            
-
-            <td class="description last">description of param1.</td>
-        </tr>
-
-    
-    </tbody>
-</table>
-
-
-
-
-
-
-<dl class="details">
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-    <dt class="tag-source">Source:</dt>
-    <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line361">line 361</a>
-    </li></ul></dd>
-    
-
-    
-
-    
-
-    
-</dl>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<h5>Returns:</h5>
-
-        
-<div class="param-desc">
-    description of return value.
-</div>
-
-
-
-<dl>
-    <dt>
-        Type
-    </dt>
-    <dd>
-        
-<span class="param-type">type</span>
-
-
-    </dd>
-</dl>
-
-    
-
-
-
-
-    <h5>Example</h5>
-    
-    <pre class="prettyprint"><code>cache.static1('param1');</code></pre>
-
-
-
-        
     
 
     
@@ -1552,13 +1396,13 @@
 </div>
 
 <nav>
-    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="mcode.module__mcode-cache.js_.html">'mcode-cache.js'</a></li></ul><h3>Classes</h3><ul><li><a href="mcode.module__mcode-cache.js_-cache.html">cache</a></li><li><a href="mcode.module__mcode-cache.js_-cache%2520class%2520constructor..html">cache class constructor.</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="mcode.module__mcode-cache.js_.html">'mcode-cache.js'</a></li></ul><h3>Classes</h3><ul><li><a href="mcode.module__mcode-cache.js_-cache.html">cache</a></li></ul>
 </nav>
 
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Wed Nov 05 2025 14:30:07 GMT-0500 (Eastern Standard Time)
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Wed Aug 26 2026 20:24:29 GMT-0400 (Eastern Daylight Time)
 </footer>
 
 <script> prettyPrint(); </script>
